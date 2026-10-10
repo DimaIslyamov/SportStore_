@@ -2,6 +2,13 @@ PYTHON ?= .venv/bin/python
 
 .PHONY: install check migrations migrate run test lint format up down logs
 .PHONY: docker-check docker-test docker-migrate docker-migrations
+.PHONY: tokens-clean docker-tokens-clean
+
+tokens-clean:
+	$(PYTHON) manage.py flushexpiredtokens
+
+docker-tokens-clean:
+	docker compose exec django python manage.py flushexpiredtokens
 
 install:
 	$(PYTHON) -m pip install -r requirements-dev.txt

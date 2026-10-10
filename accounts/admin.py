@@ -7,12 +7,21 @@ from .models import User
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
     ordering = ("email",)
-    list_display = ("email", "first_name", "last_name", "is_staff", "is_active")
-    search_fields = ("email", "first_name", "last_name")
+    list_display = (
+        "email",
+        "first_name",
+        "last_name",
+        "role",
+        "is_staff",
+        "is_active",
+    )
+    list_filter = ("role", "is_staff", "is_superuser", "is_active")
+    search_fields = ("email", "first_name", "last_name", "phone")
+    readonly_fields = ("last_login", "date_joined", "created_at", "updated_at")
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Personal info", {"fields": ("first_name", "last_name")}),
+        ("Profile", {"fields": ("first_name", "last_name", "phone", "role")}),
         (
             "Permissions",
             {
@@ -25,7 +34,10 @@ class UserAdmin(DjangoUserAdmin):
                 ),
             },
         ),
-        ("Important dates", {"fields": ("last_login", "date_joined")}),
+        (
+            "Dates",
+            {"fields": ("last_login", "date_joined", "created_at", "updated_at")},
+        ),
     )
 
     add_fieldsets = (
@@ -33,8 +45,24 @@ class UserAdmin(DjangoUserAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email", "password1", "password2"),
+                "fields": (
+                    "email",
+                    "password1",
+                    "password2",
+                    "first_name",
+                    "last_name",
+                    "phone",
+                    "role",
+                ),
             },
         ),
     )
-    
+
+    def has_add_permission(self, request):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_superuser
