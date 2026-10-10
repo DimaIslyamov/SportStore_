@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated local data
+db.sqlite3
+staticfiles/
+media/
+work/
+
+# macOS and editors
+.DS_Store
+.idea/
+.vscode/

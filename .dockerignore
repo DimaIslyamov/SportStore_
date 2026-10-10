@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.env
+.env.*
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+staticfiles
+media
+work
+outputs
+.DS_Store
