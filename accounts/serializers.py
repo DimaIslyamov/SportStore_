@@ -14,6 +14,7 @@ from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .services import EmailAlreadyExists, register_customer
+from .models import Address
 
 
 User = get_user_model()
@@ -195,3 +196,27 @@ class LogoutSerializer(serializers.Serializer):
 
     def save(self, **kwargs):
         self.validated_data["refresh"].blacklist()
+
+        
+class AddressSerializer(StrictInputMixin, serializers.ModelSerializer):
+    class Meta:
+        model = Address
+        fields = (
+            "id",
+            "user",
+            "first_name",
+            "last_name",
+            "phone",
+            "country",
+            "city",
+            "postal_code",
+            "street",
+            "building",
+            "apartment",
+            "is_default",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "user", "created_at", "updated_at")
+        # Default switching is handled atomically by the viewset.
+        validators = []
