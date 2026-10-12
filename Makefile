@@ -1,4 +1,6 @@
 PYTHON ?= .venv/bin/python
+DJANGO_SETTINGS_MODULE ?= config.settings.local
+export DJANGO_SETTINGS_MODULE
 
 .PHONY: install check migrations migrate run test lint format up down logs
 .PHONY: docker-check docker-test docker-migrate docker-migrations

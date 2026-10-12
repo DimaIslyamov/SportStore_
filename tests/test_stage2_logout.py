@@ -77,9 +77,7 @@ def test_logout_rejects_access_in_refresh_field(authenticated_client, tokens):
 
 
 def test_logout_requires_refresh_field(authenticated_client):
-    response = authenticated_client.post(
-        reverse("accounts:logout"), {}, format="json"
-    )
+    response = authenticated_client.post(reverse("accounts:logout"), {}, format="json")
 
     assert response.status_code == 400
     assert "refresh" in response.json()

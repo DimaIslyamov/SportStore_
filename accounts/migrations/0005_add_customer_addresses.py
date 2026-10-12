@@ -6,33 +6,53 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('accounts', '0002_squashed_0004_stage2_user_fields'),
+        ("accounts", "0002_squashed_0004_stage2_user_fields"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Address',
+            name="Address",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('first_name', models.CharField(max_length=150)),
-                ('last_name', models.CharField(max_length=150)),
-                ('phone', models.CharField(max_length=32)),
-                ('country', models.CharField(max_length=100)),
-                ('city', models.CharField(max_length=100)),
-                ('postal_code', models.CharField(max_length=20)),
-                ('street', models.CharField(max_length=255)),
-                ('building', models.CharField(max_length=20)),
-                ('apartment', models.CharField(blank=True, default='', max_length=20)),
-                ('is_default', models.BooleanField(default=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='addresses', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("first_name", models.CharField(max_length=150)),
+                ("last_name", models.CharField(max_length=150)),
+                ("phone", models.CharField(max_length=32)),
+                ("country", models.CharField(max_length=100)),
+                ("city", models.CharField(max_length=100)),
+                ("postal_code", models.CharField(max_length=20)),
+                ("street", models.CharField(max_length=255)),
+                ("building", models.CharField(max_length=20)),
+                ("apartment", models.CharField(blank=True, default="", max_length=20)),
+                ("is_default", models.BooleanField(default=False)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="addresses",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['-created_at', '-id'],
-                'constraints': [models.UniqueConstraint(condition=models.Q(('is_default', True)), fields=('user',), name='accounts_address_one_default_per_user')],
+                "ordering": ["-created_at", "-id"],
+                "constraints": [
+                    models.UniqueConstraint(
+                        condition=models.Q(("is_default", True)),
+                        fields=("user",),
+                        name="accounts_address_one_default_per_user",
+                    )
+                ],
             },
         ),
     ]

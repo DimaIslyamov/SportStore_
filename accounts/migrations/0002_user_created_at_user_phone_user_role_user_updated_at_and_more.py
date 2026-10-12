@@ -6,39 +6,51 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('accounts', '0001_initial'),
-        ('auth', '0012_alter_user_first_name_max_length'),
+        ("accounts", "0001_initial"),
+        ("auth", "0012_alter_user_first_name_max_length"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='user',
-            name='created_at',
-            field=models.DateTimeField(default=django.utils.timezone.now, editable=False),
+            model_name="user",
+            name="created_at",
+            field=models.DateTimeField(
+                default=django.utils.timezone.now, editable=False
+            ),
         ),
         migrations.AddField(
-            model_name='user',
-            name='phone',
-            field=models.CharField(blank=True, default='', max_length=32),
+            model_name="user",
+            name="phone",
+            field=models.CharField(blank=True, default="", max_length=32),
         ),
         migrations.AddField(
-            model_name='user',
-            name='role',
-            field=models.CharField(choices=[('CUSTOMER', 'Customer'), ('MANAGER', 'Manager')], db_index=True, default='CUSTOMER', max_length=16),
+            model_name="user",
+            name="role",
+            field=models.CharField(
+                choices=[("CUSTOMER", "Customer"), ("MANAGER", "Manager")],
+                db_index=True,
+                default="CUSTOMER",
+                max_length=16,
+            ),
         ),
         migrations.AddField(
-            model_name='user',
-            name='updated_at',
+            model_name="user",
+            name="updated_at",
             field=models.DateTimeField(auto_now=True),
         ),
         migrations.AddConstraint(
-            model_name='user',
-            constraint=models.UniqueConstraint(django.db.models.functions.text.Lower('email'), name='accounts_user_email_ci_unique'),
+            model_name="user",
+            constraint=models.UniqueConstraint(
+                django.db.models.functions.text.Lower("email"),
+                name="accounts_user_email_ci_unique",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='user',
-            constraint=models.CheckConstraint(condition=models.Q(('role__in', ['CUSTOMER', 'MANAGER'])), name='accounts_user_role_valid'),
+            model_name="user",
+            constraint=models.CheckConstraint(
+                condition=models.Q(("role__in", ["CUSTOMER", "MANAGER"])),
+                name="accounts_user_role_valid",
+            ),
         ),
     ]

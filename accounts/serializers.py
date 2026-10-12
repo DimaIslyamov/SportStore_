@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from core.serializers import StrictInputMixin
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -13,44 +13,12 @@ from rest_framework_simplejwt.serializers import (
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
+
 from .services import EmailAlreadyExists, register_customer
 from .models import Address
 
 
 User = get_user_model()
-
-
-class StrictInputMixin:
-    """
-    Добавляет строгую проверку входящих полей сериализатора DRF.
-
-    По умолчанию DRF игнорирует неизвестные поля и поля с read_only=True.
-    Этот Mixin запрещает передавать такие поля и возвращает ValidationError.
-
-    Используется совместно с Serializer или ModelSerializer.
-    Должен указываться перед ними в списке наследования.
-    """
-
-    def to_internal_value(self, data):
-        """
-        Проверяет входящие данные перед стандартной валидацией DRF.
-        """
-        if isinstance(data, Mapping):
-            writable = {
-                name for name, field in self.fields.items() if not field.read_only
-            }
-
-            forbidden = set(data) - writable
-
-            if forbidden:
-                raise serializers.ValidationError(
-                    {
-                        name: ["This field cannot be submitted."]
-                        for name in sorted(forbidden)
-                    }
-                )
-
-        return super().to_internal_value(data)
 
 
 class UserProfileSerializer(StrictInputMixin, serializers.ModelSerializer):
@@ -136,8 +104,9 @@ class RegisterSerializer(StrictInputMixin, serializers.ModelSerializer):
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
-     JWT-сериализатор для авторизации пользователя по email и паролю.
+    JWT-сериализатор для авторизации пользователя по email и паролю.
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["email"] = serializers.EmailField(
@@ -197,7 +166,7 @@ class LogoutSerializer(serializers.Serializer):
     def save(self, **kwargs):
         self.validated_data["refresh"].blacklist()
 
-        
+
 class AddressSerializer(StrictInputMixin, serializers.ModelSerializer):
     class Meta:
         model = Address

@@ -9,9 +9,7 @@ class IsCustomer(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         return bool(
-            user.is_authenticated
-            and user.is_active
-            and user.role == User.Role.CUSTOMER
+            user.is_authenticated and user.is_active and user.role == User.Role.CUSTOMER
         )
 
 
