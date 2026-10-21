@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.http import Http404
 from rest_framework import generics
 from rest_framework.generics import get_object_or_404
@@ -5,6 +6,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS
 
 from accounts.permissions import IsManager
 
+from .filters import ProductQuerySerializer
+from .pagination import ProductPagination
+from .product_serializers import ProductDetailSerializer, ProductListSerializer
+from .querysets import public_product_detail_queryset, public_product_queryset
 from .models import Brand, Category
 from .serializers import BrandSerializer, CategorySerializer
 
@@ -71,3 +76,49 @@ class BrandDetailView(
         if self.request.method != "PATCH":
             queryset = queryset.filter(is_active=True)
         return queryset
+
+
+class ProductListView(generics.ListAPIView):
+    permission_classes = [AllowAny]
+    http_method_names = ["get", "head", "options"]
+    serializer_class = ProductListSerializer
+    pagination_class = ProductPagination
+
+    def get_queryset(self):
+        params = ProductQuerySerializer(data=self.request.query_params.dict())
+        params.is_valid(raise_exception=True)
+        data = params.validated_data
+        queryset = public_product_queryset()
+
+        if "category" in data:
+            queryset = queryset.filter(category__slug=data["category"])
+        if "brand" in data:
+            queryset = queryset.filter(brand__slug=data["brand"])
+        if "min_price" in data:
+            queryset = queryset.filter(from_price__gte=data["min_price"])
+        if "max_price" in data:
+            queryset = queryset.filter(from_price__lte=data["max_price"])
+        if "in_stock" in data:
+            queryset = queryset.filter(in_stock=data["in_stock"])
+        if data.get("search"):
+            queryset = queryset.filter(
+                Q(name__icontains=data["search"])
+                | Q(description__icontains=data["search"])
+            )
+
+        ordering = {
+            "name": ("name", "id"),
+            "price": ("from_price", "id"),
+            "-price": ("-from_price", "id"),
+        }
+        return queryset.order_by(*ordering[data["ordering"]])
+
+
+class ProductDetailView(generics.RetrieveAPIView):
+    permission_classes = [AllowAny]
+    http_method_names = ["get", "head", "options"]
+    serializer_class = ProductDetailSerializer
+    lookup_field = "slug"
+
+    def get_queryset(self):
+        return public_product_detail_queryset()

@@ -5,6 +5,8 @@ from .views import (
     BrandListCreateView,
     CategoryDetailView,
     CategoryListCreateView,
+    ProductDetailView,
+    ProductListView,
 )
 
 
@@ -19,4 +21,6 @@ urlpatterns = [
     ),
     path("brands/", BrandListCreateView.as_view(), name="brand-list"),
     path("brands/<slug:lookup>/", BrandDetailView.as_view(), name="brand-detail"),
+    path("products/", ProductListView.as_view(), name="product-list"),
+    path("products/<slug:slug>/", ProductDetailView.as_view(), name="product-detail"),
 ]
