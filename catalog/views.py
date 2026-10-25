@@ -1,16 +1,19 @@
 from django.db.models import Q
 from django.http import Http404
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.generics import get_object_or_404
+from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS
 
 from accounts.permissions import IsManager
 
+from . import services
 from .filters import ProductQuerySerializer
+from .manager_serializers import ProductInputSerializer, ProductOutputSerializer
 from .pagination import ProductPagination
 from .product_serializers import ProductDetailSerializer, ProductListSerializer
 from .querysets import public_product_detail_queryset, public_product_queryset
-from .models import Brand, Category
+from .models import Brand, Category, Product
 from .serializers import BrandSerializer, CategorySerializer
 
 
@@ -78,9 +81,8 @@ class BrandDetailView(
         return queryset
 
 
-class ProductListView(generics.ListAPIView):
-    permission_classes = [AllowAny]
-    http_method_names = ["get", "head", "options"]
+class ProductListView(CatalogAccessMixin, generics.ListAPIView):
+    http_method_names = ["get", "post", "head", "options"]
     serializer_class = ProductListSerializer
     pagination_class = ProductPagination
 
@@ -113,12 +115,31 @@ class ProductListView(generics.ListAPIView):
         }
         return queryset.order_by(*ordering[data["ordering"]])
 
+    def post(self, request, *args, **kwargs):
+        data = request.data.dict() if hasattr(request.data, "dict") else request.data
+        serializer = ProductInputSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        product = services.create_product(**serializer.validated_data)
+        return Response(
+            ProductOutputSerializer(product).data, status=status.HTTP_201_CREATED
+        )
 
-class ProductDetailView(generics.RetrieveAPIView):
-    permission_classes = [AllowAny]
-    http_method_names = ["get", "head", "options"]
+
+class ProductDetailView(CatalogAccessMixin, generics.RetrieveAPIView):
+    http_method_names = ["get", "patch", "head", "options"]
     serializer_class = ProductDetailSerializer
     lookup_field = "slug"
 
     def get_queryset(self):
         return public_product_detail_queryset()
+
+    def patch(self, request, *args, **kwargs):
+        lookup = kwargs["slug"]
+        if not lookup.isascii() or not lookup.isdecimal():
+            raise Http404
+        product = get_object_or_404(Product, pk=lookup)
+        data = request.data.dict() if hasattr(request.data, "dict") else request.data
+        serializer = ProductInputSerializer(product, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = services.update_product(product.pk, **serializer.validated_data)
+        return Response(ProductOutputSerializer(updated).data)

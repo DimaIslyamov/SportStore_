@@ -9,6 +9,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env()
 env.read_env(BASE_DIR / ".env", overwrite=False)
 
+CATALOG_S3_BUCKET = env("CATALOG_S3_BUCKET", default="")
+CATALOG_S3_REGION = env("CATALOG_S3_REGION", default="")
+
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = False
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])

@@ -248,23 +248,49 @@ def test_inactive_parent_does_not_hide_own_active_category(
 
 
 @pytest.mark.parametrize("actor", ["anonymous", "customer", "manager"])
-@pytest.mark.parametrize(
-    ("method", "detail"),
-    [("post", False), ("put", True), ("patch", True), ("delete", True)],
-)
-def test_product_api_is_read_only(
-    api_client, request, product_factory, variant_factory, actor, method, detail
+@pytest.mark.parametrize("method", ["post", "patch"])
+def test_product_writes_require_manager(
+    api_client, request, product_factory, variant_factory, actor, method
 ):
     product = product_factory()
     variant_factory(product)
     if actor != "anonymous":
         api_client.force_authenticate(user=request.getfixturevalue(actor))
-    url = detail_url(product) if detail else list_url()
-    response = getattr(api_client, method)(url, {"name": "Changed"}, format="json")
-    assert response.status_code == 405
+    if method == "post":
+        url = list_url()
+        payload = {
+            "name": "New",
+            "slug": "new-manager-product",
+            "category": product.category_id,
+            "brand": product.brand_id,
+        }
+    else:
+        url = reverse("catalog:product-detail", kwargs={"slug": str(product.pk)})
+        payload = {"name": "Changed"}
+    response = getattr(api_client, method)(url, payload, format="json")
+    expected = (
+        (201 if method == "post" else 200)
+        if actor == "manager"
+        else (401 if actor == "anonymous" else 403)
+    )
+    assert response.status_code == expected
     product.refresh_from_db()
-    assert product.name != "Changed"
-    assert Product.objects.count() == 1
+    if actor == "manager" and method == "patch":
+        assert product.name == "Changed"
+    if actor != "manager":
+        assert product.name != "Changed"
+        assert Product.objects.count() == 1
+
+
+@pytest.mark.parametrize("method", ["put", "delete"])
+def test_product_unsupported_methods_stay_405(
+    api_client, manager, product_factory, method
+):
+    product = product_factory()
+    api_client.force_authenticate(user=manager)
+    url = reverse("catalog:product-detail", kwargs={"slug": str(product.pk)})
+    assert getattr(api_client, method)(url, {}, format="json").status_code == 405
+    assert Product.objects.filter(pk=product.pk).exists()
 
 
 @pytest.mark.parametrize(

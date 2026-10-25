@@ -248,6 +248,12 @@ class ProductImage(models.Model):
         related_name="images",
     )
     image_url = models.URLField(max_length=2048)
+
+    # нужен для удаления только собственных S3-объектов
+    storage_key = models.CharField(
+        max_length=255, blank=True, default="", editable=False
+    )
+
     alt_text = models.CharField(
         max_length=255,
         blank=True,
@@ -275,4 +281,3 @@ class ProductImage(models.Model):
 
     def __str__(self):
         return self.image_url
-    
