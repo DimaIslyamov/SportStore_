@@ -20,9 +20,11 @@ class CheckoutView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
 
         order = services.checkout(
-            user=request.user, address_id=serializer.validated_data["address_id"]
+            user=request.user,
+            address_id=serializer.validated_data["address_id"],
         )
 
         return Response(
-            CheckoutOrderOutputSerializer(order).data, status=status.HTTP_201_CREATED
+            CheckoutOrderOutputSerializer(order).data,
+            status=status.HTTP_201_CREATED,
         )

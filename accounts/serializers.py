@@ -3,6 +3,7 @@ from core.serializers import StrictInputMixin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework_simplejwt.exceptions import TokenError
@@ -43,6 +44,19 @@ class UserProfileSerializer(StrictInputMixin, serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+    def update(self, instance, validated_data):
+        update_fields = ["updated_at"]
+        for field in ("first_name", "last_name", "phone"):
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+                update_fields.append(field)
+
+        # The instance from authentication can be stale by the time we save it.
+        with transaction.atomic():
+            instance.save(update_fields=update_fields)
+            instance.refresh_from_db()
+        return instance
 
 
 class RegisterSerializer(StrictInputMixin, serializers.ModelSerializer):

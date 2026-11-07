@@ -70,9 +70,13 @@ def test_real_jwt_role_matrix(checkout_factory, checkout_state, actor, status_co
         ({"address_id": -1}, "address_id"),
         ({"address_id": None}, "address_id"),
         ({"address_id": True}, "address_id"),
+        ({"address_id": False}, "address_id"),
+        ({"address_id": []}, "address_id"),
+        ({"address_id": {}}, "address_id"),
         ({"address_id": 1.5}, "address_id"),
         ({"address_id": "oops"}, "address_id"),
         ({"address_id": 9223372036854775808}, "address_id"),
+        ({"address_id": "9223372036854775808"}, "address_id"),
         ({"price": "0.01"}, "price"),
         ({"total": "0.01"}, "total"),
         ({"discount": "999.00"}, "discount"),
@@ -85,7 +89,7 @@ def test_real_jwt_role_matrix(checkout_factory, checkout_state, actor, status_co
     ],
 )
 def test_strict_input_cannot_change_server_money_or_owner(
-    checkout_factory, checkout_state, payload, key
+    checkout_factory, checkout_state, django_assert_num_queries, payload, key
 ):
     case = checkout_factory()
     client = APIClient()
@@ -94,8 +98,36 @@ def test_strict_input_cannot_change_server_money_or_owner(
     if key != "address_id":
         data["address_id"] = case.address.pk
     before = checkout_state()
-    response = client.post(checkout_url(), data, format="json")
-    assert response.status_code == 400 and key in response.json()
+    with django_assert_num_queries(0):
+        response = client.post(checkout_url(), data, format="json")
+        assert response.status_code == 400
+    assert set(response.json()) == {key}
+    assert isinstance(response.json()[key], list)
+    assert checkout_state() == before
+
+
+@pytest.mark.parametrize(
+    "literal", ["41.0", "41.000000000000001", "41e0", '"41.0"', '"41.5"', '"41e0"']
+)
+def test_checkout_rejects_non_integer_json_address_id(
+    checkout_factory, checkout_state, django_assert_num_queries, literal
+):
+    case = checkout_factory()
+    Address.objects.filter(pk=case.address.pk).update(id=41)
+    client = APIClient()
+    client.force_authenticate(user=case.user)
+    before = checkout_state()
+
+    # Send the literal directly so a JSON encoder cannot round it before the request.
+    with django_assert_num_queries(0):
+        response = client.post(
+            checkout_url(),
+            f'{{"address_id": {literal}}}',
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+    assert set(response.json()) == {"address_id"}
+    assert isinstance(response.json()["address_id"], list)
     assert checkout_state() == before
 
 
@@ -156,12 +188,15 @@ def test_local_business_errors_have_codes_without_side_effects(
     assert checkout_state() == before
 
 
-def test_success_response_is_complete_snapshot_not_live_catalog(checkout_factory):
+@pytest.mark.parametrize("address_id_type", [int, str], ids=["integer", "string"])
+def test_success_response_is_complete_snapshot_not_live_catalog(
+    checkout_factory, address_id_type
+):
     case = checkout_factory()
     client = APIClient()
     client.force_authenticate(user=case.user)
     response = client.post(
-        checkout_url(), {"address_id": case.address.pk}, format="json"
+        checkout_url(), {"address_id": address_id_type(case.address.pk)}, format="json"
     )
     assert response.status_code == 201
     body = response.json()

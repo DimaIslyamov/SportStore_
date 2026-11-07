@@ -47,7 +47,8 @@ def _local_clean(instance, *, exclude):
         )
     except DjangoValidationError as exc:
         raise CheckoutError(
-            "CHECKOUT_DATA_INVALID", "Stored checkout data is invalid."
+            "CHECKOUT_DATA_INVALID",
+            "Stored checkout data is invalid.",
         ) from exc
 
 
@@ -58,7 +59,8 @@ def _check_amount(value, maximum):
         or not Decimal("0.00") <= value <= maximum
     ):
         raise CheckoutError(
-            "AMOUNT_OUT_OF_RANGE", "Checkout amount is outside the supported range."
+            "AMOUNT_OUT_OF_RANGE",
+            "Checkout amount is outside the supported range.",
         )
 
 
@@ -71,7 +73,7 @@ def checkout(*, user, address_id):
     with transaction.atomic():
         locked_user = User.objects.select_for_update().filter(pk=user.pk).first()
         _require_customer(locked_user)
-        
+
         address = (
             Address.objects.select_for_update()
             .filter(pk=address_id, user=locked_user)
@@ -80,16 +82,26 @@ def checkout(*, user, address_id):
 
         if address is None:
             raise CheckoutError(
-                "ADDRESS_NOT_FOUND", "Shipping address was not found.", status_code=404
+                "ADDRESS_NOT_FOUND",
+                "Shipping address was not found.",
+                status_code=404,
             )
 
         cart = Cart.objects.select_for_update().filter(user=locked_user).first()
         if cart is None:
-            raise CheckoutError("EMPTY_CART", "Cart is empty.", status_code=400)
+            raise CheckoutError(
+                "EMPTY_CART",
+                "Cart is empty.",
+                status_code=400,
+            )
 
         lines = list(cart_items_for_checkout(cart=cart))
         if not lines:
-            raise CheckoutError("EMPTY_CART", "Cart is empty.", status_code=400)
+            raise CheckoutError(
+                "EMPTY_CART",
+                "Cart is empty.",
+                status_code=400,
+            )
 
         for line in lines:
             if type(line.quantity) is not int or not 1 <= line.quantity <= min(
@@ -111,7 +123,8 @@ def checkout(*, user, address_id):
 
         if len(variants) != len(variant_ids):
             raise CheckoutError(
-                "PRODUCT_UNAVAILABLE", "A selected variant no longer exists."
+                "PRODUCT_UNAVAILABLE",
+                "A selected variant no longer exists.",
             )
 
         product_ids = sorted({variant.product_id for variant in variants.values()})
@@ -143,24 +156,29 @@ def checkout(*, user, address_id):
         }
 
         attributes = defaultdict(list)
+
         for row in VariantAttribute.objects.filter(
             variant_id__in=variant_ids
         ).select_related("attribute"):
             attributes[row.variant_id].append(row)
 
         rows = []
-        for line in lines:
 
+        for line in lines:
             variant = variants[line.variant_id]
+
             if not variant_is_active(variant):
                 raise CheckoutError(
-                    "PRODUCT_UNAVAILABLE", "A selected product is unavailable."
+                    "PRODUCT_UNAVAILABLE",
+                    "A selected product is unavailable.",
                 )
 
             inventory = inventories.get(variant.pk)
+
             if inventory is None or inventory.quantity < line.quantity:
                 raise CheckoutError(
-                    "OUT_OF_STOCK", f"Not enough stock for variant {variant.pk}."
+                    "OUT_OF_STOCK",
+                    f"Not enough stock for variant {variant.pk}.",
                 )
 
             try:
@@ -171,8 +189,10 @@ def checkout(*, user, address_id):
                 )
             except DjangoValidationError as exc:
                 raise CheckoutError(
-                    "CHECKOUT_DATA_INVALID", "Stored product data is invalid."
+                    "CHECKOUT_DATA_INVALID",
+                    "Stored product data is invalid.",
                 ) from exc
+
             _check_amount(row["total_price"], MAX_LINE_TOTAL)
             rows.append(row)
 

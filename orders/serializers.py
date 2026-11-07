@@ -6,8 +6,25 @@ from .models import Order, OrderItem, OrderShippingAddress
 from .snapshots import SHIPPING_FIELDS
 
 
+class CheckoutAddressIdField(serializers.IntegerField):
+    def to_internal_value(self, data):
+        if type(data) is int:
+            return data
+
+        if not isinstance(data, str):
+            self.fail("invalid")
+
+        if len(data) > self.MAX_STRING_LENGTH:
+            self.fail("max_string_length")
+
+        try:
+            return int(data)
+        except ValueError:
+            self.fail("invalid")
+
+
 class CheckoutInputSerializer(StrictInputMixin, serializers.Serializer):
-    address_id = serializers.IntegerField(
+    address_id = CheckoutAddressIdField(
         min_value=1,
         max_value=9223372036854775807,
     )
