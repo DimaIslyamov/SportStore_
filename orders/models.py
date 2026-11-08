@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 from django.db.models import F, Q
+from django.utils import timezone
 
 from .numbers import generate_order_number
 
@@ -243,3 +244,76 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.sku} x {self.quantity}"
+
+
+class IdempotencyRecord(models.Model):
+    class Status(models.TextChoices):
+        PROCESSING = "PROCESSING", "Processing"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    key = models.UUIDField()
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="idempotency_records",
+        db_index=False,
+    )
+    operation = models.CharField(max_length=32)
+    request_hash = models.CharField(max_length=64)
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.PROCESSING,
+    )
+    resource = models.ForeignKey(
+        Order,
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    response_status_code = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+    )
+    response_body = models.JSONField(
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(
+        default=timezone.now,
+        editable=False,
+    )
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "operation", "key"],
+                name="ord_idem_user_op_key_uniq",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        status="PROCESSING",
+                        resource__isnull=True,
+                        response_status_code__isnull=True,
+                        response_body__isnull=True,
+                    )
+                    | Q(
+                        status="COMPLETED",
+                        resource__isnull=False,
+                        response_status_code__isnull=False,
+                        response_body__isnull=False,
+                    )
+                    | Q(
+                        status="FAILED",
+                        resource__isnull=True,
+                        response_status_code__isnull=False,
+                        response_body__isnull=False,
+                    )
+                ),
+                name="ord_idem_state_valid",
+            ),
+        ]

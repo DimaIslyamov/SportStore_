@@ -1,12 +1,12 @@
-from rest_framework import generics, status
+from rest_framework import generics
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import IsCustomer
 
-from . import services
-from .serializers import CheckoutInputSerializer, CheckoutOrderOutputSerializer
+from .idempotency import idempotent_checkout, parse_idempotency_key
+from .serializers import CheckoutInputSerializer
 
 
 class CheckoutView(generics.GenericAPIView):
@@ -16,15 +16,15 @@ class CheckoutView(generics.GenericAPIView):
     http_method_names = ["post", "options"]
 
     def post(self, request, *args, **kwargs):
+        key = parse_idempotency_key(request.headers.get("Idempotency-Key"))
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        order = services.checkout(
+        result = idempotent_checkout(
             user=request.user,
             address_id=serializer.validated_data["address_id"],
+            key=key,
         )
 
-        return Response(
-            CheckoutOrderOutputSerializer(order).data,
-            status=status.HTTP_201_CREATED,
-        )
+        return Response(result.body, status=result.status_code)
