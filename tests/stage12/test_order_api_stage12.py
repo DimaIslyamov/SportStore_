@@ -18,8 +18,8 @@ pytestmark = pytest.mark.django_db
         ("inactive", 401, 401, 401),
         ("customer", 200, 403, 200),
         ("staff-customer", 200, 403, 200),
-        ("manager", 200, 200, 403),
-        ("super-customer", 200, 200, 200),
+        ("manager", 200, 409, 403),
+        ("super-customer", 200, 409, 200),
     ],
 )
 def test_jwt_permissions(
@@ -55,8 +55,8 @@ def test_jwt_permissions(
         reverse("orders:status", kwargs=kwargs), {"status": "PAID"}, format="json"
     )
     assert status_response.status_code == status_code
-    if status_code == 200:
-        assert status_response.json()["status"] == "PAID"
+    if status_code == 409:
+        assert status_response.json()["code"] == "PAYMENT_CONFIRMATION_REQUIRED"
 
     cancel_response = api_client.post(reverse("orders:cancel", kwargs=kwargs))
     assert cancel_response.status_code == cancel_code

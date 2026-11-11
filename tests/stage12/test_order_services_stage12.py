@@ -1,5 +1,6 @@
 from decimal import Decimal
 from itertools import product
+from uuid import uuid4
 
 import pytest
 from django.db import connection
@@ -9,11 +10,11 @@ from catalog.models import Inventory
 from orders import services
 from orders.errors import OrderError
 from orders.models import Order
+from payments.services import create_payment
 
 pytestmark = pytest.mark.django_db
 
 ALLOWED_PAIRS = {
-    ("PENDING", "PAID"),
     ("PENDING", "CANCELLED"),
     ("PAID", "PROCESSING"),
     ("PAID", "CANCELLED"),
@@ -48,7 +49,12 @@ def test_every_transition(order_factory, source, target):
             services.change_order_status(order_id=order.pk, target_status=target)
 
         assert caught.value.status_code == 409
-        assert caught.value.detail["code"] == "INVALID_ORDER_STATUS_TRANSITION"
+        expected_code = (
+            "PAYMENT_CONFIRMATION_REQUIRED"
+            if (source, target) == ("PENDING", "PAID")
+            else "INVALID_ORDER_STATUS_TRANSITION"
+        )
+        assert caught.value.detail["code"] == expected_code
         order.refresh_from_db()
         assert order.status == source
         assert inventory_quantities() == [8, 10]
@@ -58,7 +64,7 @@ def test_every_transition(order_factory, source, target):
 def test_customer_cancel_restores_once(order_factory, customer, source):
     order = order_factory()
     if source == "PAID":
-        services.change_order_status(order_id=order.pk, target_status="PAID")
+        create_payment(user=customer, order_id=order.pk, key=uuid4())
 
     assert inventory_quantities() == [8, 7]
     first = services.cancel_order(user=customer, order_id=order.pk)

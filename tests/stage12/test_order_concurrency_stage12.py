@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from queue import Queue
 from time import monotonic, sleep
+from uuid import uuid4
 
 import pytest
 from django.db import close_old_connections, connection, transaction
@@ -10,6 +11,7 @@ from catalog.models import Inventory
 from orders import services
 from orders.errors import OrderError
 from orders.models import Order
+from payments.services import create_payment
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -88,7 +90,7 @@ def test_cancel_and_status_transition_serialize(
     order_factory, customer, order_variants, winner
 ):
     order = order_factory(quantities=(2,))
-    services.change_order_status(order_id=order.pk, target_status="PAID")
+    create_payment(user=customer, order_id=order.pk, key=uuid4())
     cancel = partial(services.cancel_order, user=customer, order_id=order.pk)
     process = partial(
         services.change_order_status, order_id=order.pk, target_status="PROCESSING"

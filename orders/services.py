@@ -17,6 +17,7 @@ from catalog.models import (
     ProductVariant,
     VariantAttribute,
 )
+from payments.models import Payment
 
 from .errors import CheckoutError, OrderError
 from .models import (
@@ -301,12 +302,26 @@ def _apply_order_status(order, target_status, *, invalid_code):
             f"Cannot transition order from {order.status} to {target_status}.",
         )
 
+    if (
+        target_status == Order.Status.PAID
+        and not Payment.objects.filter(
+            order=order,
+            status=Payment.Status.SUCCESS,
+            amount=order.total,
+            currency=order.currency,
+        ).exists()
+    ):
+        raise OrderError(
+            "PAYMENT_CONFIRMATION_REQUIRED",
+            "A successful matching payment is required to mark the order paid.",
+        )
+
     if target_status == Order.Status.CANCELLED:
         restore_inventory(order=order)
 
     order.status = target_status
     order.save(update_fields=["status", "updated_at"])
-    return order
+    return order 
 
 
 @transaction.atomic

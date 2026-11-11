@@ -11,7 +11,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def test_checkout_replays_original_json_after_status_change_and_cancel(
-    api_client, customer, manager, prepare_order_cart, order_variants
+    api_client, customer, prepare_order_cart, order_variants
 ):
     address = prepare_order_cart(owner=customer, quantities=(2,))
     checkout_url = reverse("orders:checkout")
@@ -36,12 +36,15 @@ def test_checkout_replays_original_json_after_status_change_and_cancel(
     assert saved["response_body"] == initial_body
     assert Inventory.objects.get(variant=order_variants[0]).quantity == 8
 
-    api_client.force_authenticate(user=manager)
-    changed = api_client.patch(
-        reverse("orders:status", kwargs=lookup), {"status": "PAID"}, format="json"
+    changed = api_client.post(
+        reverse("orders:payments", kwargs=lookup),
+        {"outcome": "success"},
+        format="json",
+        HTTP_IDEMPOTENCY_KEY=str(uuid4()),
     )
-    assert changed.status_code == 200
-    assert changed.json()["status"] == "PAID"
+    assert changed.status_code == 201
+    assert changed.json()["status"] == "SUCCESS"
+    assert Order.objects.get(pk=lookup["pk"]).status == "PAID"
     assert records.get() == saved
 
     api_client.force_authenticate(user=customer)
