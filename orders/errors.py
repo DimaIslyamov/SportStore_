@@ -8,3 +8,11 @@ class CheckoutError(APIException):
     def __init__(self, code, detail, *, status_code=status.HTTP_409_CONFLICT):
         self.status_code = status_code
         super().__init__({"code": code, "detail": detail})
+
+
+class OrderError(APIException):
+    default_code = "order-error"
+
+    def __init__(self, code, detail, *, status_code=status.HTTP_409_CONFLICT):
+        self.status_code = status_code
+        super().__init__({"code": code, "detail": detail})

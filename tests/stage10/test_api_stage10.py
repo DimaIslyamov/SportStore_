@@ -1,4 +1,3 @@
-
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -202,9 +201,7 @@ def test_local_business_errors_have_codes_without_side_effects(
 
     client = checkout_client()
     client.force_authenticate(user=case.user)
-    response = client.post(
-        checkout_url(), {"address_id": address_id}, format="json"
-    )
+    response = client.post(checkout_url(), {"address_id": address_id}, format="json")
 
     assert response.status_code == status_code
     assert response.json()["code"] == code
@@ -251,8 +248,7 @@ def test_success_response_is_complete_snapshot_not_live_catalog(
 
     first = body["items"][0]
     assert (
-        first["sku"] == "CHECKOUT-SHIRT-M"
-        and first["product_name"] == "Training Shirt"
+        first["sku"] == "CHECKOUT-SHIRT-M" and first["product_name"] == "Training Shirt"
     )
     assert first["unit_price"] == "19.90" and first["total_price"] == "39.80"
     assert (
@@ -263,7 +259,7 @@ def test_success_response_is_complete_snapshot_not_live_catalog(
     assert body["created_at"] and body["updated_at"] and "Location" not in response
 
 
-def test_json_parser_and_no_new_order_history_routes(checkout_factory, checkout_state):
+def test_checkout_json_parser_and_method(checkout_factory, checkout_state):
     case = checkout_factory()
 
     client = checkout_client()
@@ -288,6 +284,4 @@ def test_json_parser_and_no_new_order_history_routes(checkout_factory, checkout_
     )
     assert client.post(checkout_url(), [], format="json").status_code == 400
     assert client.get(checkout_url()).status_code == 405
-    assert client.get("/api/v1/orders/").status_code == 404
-    assert client.get("/api/v1/orders/123/").status_code == 404
     assert checkout_state() == before

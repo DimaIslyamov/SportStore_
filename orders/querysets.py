@@ -2,6 +2,7 @@ from django.db.models import Prefetch
 
 from cart.models import CartItem
 
+from .errors import OrderError
 from .models import Order, OrderItem
 
 
@@ -17,3 +18,14 @@ def checkout_order_queryset():
             to_attr="loaded_items",
         ),
     )
+
+
+def get_order_or_404(queryset, *, order_id):
+    try:
+        return queryset.get(pk=order_id)
+    except Order.DoesNotExist:
+        raise OrderError(
+            "ORDER_NOT_FOUND",
+            "Order was not found.",
+            status_code=404,
+        ) from None

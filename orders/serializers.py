@@ -114,3 +114,25 @@ class CheckoutOrderOutputSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = fields
+
+
+class OrderSummarySerializer(CheckoutOrderOutputSerializer):
+    class Meta(CheckoutOrderOutputSerializer.Meta):
+        fields = (
+            "id",
+            "order_number",
+            "status",
+            "currency",
+            "total",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+
+class OrderCancelInputSerializer(StrictInputMixin, serializers.Serializer):
+    pass
+
+
+class OrderStatusInputSerializer(StrictInputMixin, serializers.Serializer):
+    status = serializers.ChoiceField(choices=Order.Status.choices)

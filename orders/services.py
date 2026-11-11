@@ -18,7 +18,7 @@ from catalog.models import (
     VariantAttribute,
 )
 
-from .errors import CheckoutError
+from .errors import CheckoutError, OrderError
 from .models import (
     MAX_LINE_TOTAL,
     MAX_ORDER_ITEM_QUANTITY,
@@ -27,8 +27,23 @@ from .models import (
     OrderItem,
     OrderShippingAddress,
 )
-from .querysets import cart_items_for_checkout, checkout_order_queryset
+from .querysets import (
+    cart_items_for_checkout,
+    checkout_order_queryset,
+    get_order_or_404,
+)
 from .snapshots import build_item_snapshot, build_shipping_snapshot
+
+
+ORDER_STATUS_TRANSITIONS = {
+    Order.Status.PENDING: frozenset({Order.Status.PAID, Order.Status.CANCELLED}),
+    Order.Status.PAID: frozenset({Order.Status.PROCESSING, Order.Status.CANCELLED}),
+    Order.Status.PROCESSING: frozenset({Order.Status.SHIPPED}),
+    Order.Status.SHIPPED: frozenset({Order.Status.DELIVERED}),
+    Order.Status.DELIVERED: frozenset(),
+    Order.Status.CANCELLED: frozenset(),
+}
+MAX_INVENTORY_QUANTITY = 2_147_483_647
 
 
 def _require_customer(user):
@@ -237,3 +252,90 @@ def checkout(*, user, address_id):
         clear_cart(user=locked_user)
 
         return checkout_order_queryset().get(pk=order.pk, user=locked_user)
+
+
+def restore_inventory(*, order):
+    """Restore checkout stock inside the transaction holding the Order row lock."""
+    quantities = defaultdict(int)
+    lines = order.items.order_by().values_list("variant_id", "quantity")
+    for variant_id, quantity in lines:
+        if variant_id is None:
+            raise OrderError(
+                "INVENTORY_RESTORE_UNAVAILABLE",
+                "An ordered variant no longer exists.",
+            )
+        quantities[variant_id] += quantity
+
+    if not quantities:
+        raise OrderError(
+            "INVENTORY_RESTORE_UNAVAILABLE",
+            "Order has no stock to restore.",
+        )
+
+    inventories = list(
+        Inventory.objects.select_for_update()
+        .filter(variant_id__in=quantities)
+        .order_by("variant_id", "pk")
+    )
+    if len(inventories) != len(quantities):
+        raise OrderError(
+            "INVENTORY_RESTORE_UNAVAILABLE",
+            "Inventory is missing for an ordered variant.",
+        )
+
+    for inventory in inventories:
+        restored = inventory.quantity + quantities[inventory.variant_id]
+        if restored > MAX_INVENTORY_QUANTITY:
+            raise OrderError(
+                "INVENTORY_RESTORE_UNAVAILABLE",
+                "Restored quantity would exceed the inventory limit.",
+            )
+        inventory.quantity = restored
+        inventory.save(update_fields=["quantity", "updated_at"])
+
+
+def _apply_order_status(order, target_status, *, invalid_code):
+    if target_status not in ORDER_STATUS_TRANSITIONS[order.status]:
+        raise OrderError(
+            invalid_code,
+            f"Cannot transition order from {order.status} to {target_status}.",
+        )
+
+    if target_status == Order.Status.CANCELLED:
+        restore_inventory(order=order)
+
+    order.status = target_status
+    order.save(update_fields=["status", "updated_at"])
+    return order
+
+
+@transaction.atomic
+def cancel_order(*, user, order_id):
+    _require_customer(user)
+    order = get_order_or_404(
+        Order.objects.select_for_update().filter(user_id=user.pk),
+        order_id=order_id,
+    )
+
+    if order.status == Order.Status.CANCELLED:
+        return order
+
+    return _apply_order_status(
+        order,
+        Order.Status.CANCELLED,
+        invalid_code="ORDER_CANNOT_BE_CANCELLED",
+    )
+
+
+@transaction.atomic
+def change_order_status(*, order_id, target_status):
+    """Apply a status command from a caller that already checked access."""
+    order = get_order_or_404(
+        Order.objects.select_for_update(),
+        order_id=order_id,
+    )
+    return _apply_order_status(
+        order,
+        target_status,
+        invalid_code="INVALID_ORDER_STATUS_TRANSITION",
+    )
