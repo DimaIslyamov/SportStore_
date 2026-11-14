@@ -214,7 +214,7 @@ def test_product_rejects_invalid_or_immutable_input(
     manager_api, endpoint_urls, field, value
 ):
     response = manager_api.patch(endpoint_urls.product, {field: value}, format="json")
-    assert response.status_code == 400 and field in response.json()
+    assert response.status_code == 400 and field in response.json()["error"]["details"]
 
 
 def test_variant_create_patch_deactivate_and_public_regression(
@@ -288,7 +288,7 @@ def test_variant_create_patch_deactivate_and_public_regression(
 )
 def test_variant_rejects_invalid_input(manager_api, endpoint_urls, payload, key):
     response = manager_api.patch(endpoint_urls.variant, payload, format="json")
-    assert response.status_code == 400 and key in response.json()
+    assert response.status_code == 400 and key in response.json()["error"]["details"]
 
 
 def test_api_duplicates_are_normal_400(manager_api, stage7_product, endpoint_urls):
@@ -302,7 +302,7 @@ def test_api_duplicates_are_normal_400(manager_api, stage7_product, endpoint_url
         },
         format="json",
     )
-    assert response.status_code == 400 and "slug" in response.json()
+    assert response.status_code == 400 and "slug" in response.json()["error"]["details"]
     first = manager_api.post(
         endpoint_urls.variants,
         {"sku": "UNIQUE", "price": "2.00", "barcode": "001"},
@@ -314,7 +314,9 @@ def test_api_duplicates_are_normal_400(manager_api, stage7_product, endpoint_url
         ({"sku": "OTHER", "price": "3.00", "barcode": "001"}, "barcode"),
     ]:
         response = manager_api.post(endpoint_urls.variants, payload, format="json")
-        assert response.status_code == 400 and key in response.json()
+        assert (
+            response.status_code == 400 and key in response.json()["error"]["details"]
+        )
 
 
 @pytest.mark.parametrize(
@@ -344,7 +346,7 @@ def test_creation_identifier_formats_are_validated(
         key = "sku"
         payload = {"sku": value, "price": "1.00"}
     response = manager_api.post(url, payload, format="json")
-    assert response.status_code == 400 and key in response.json()
+    assert response.status_code == 400 and key in response.json()["error"]["details"]
     assert (Product.objects.count(), ProductVariant.objects.count()) == before
 
 

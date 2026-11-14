@@ -1,5 +1,7 @@
 from uuid import uuid4
 
+from tests.error_contract import error_content
+
 import pytest
 from django.urls import reverse
 from rest_framework_simplejwt.tokens import AccessToken
@@ -50,7 +52,7 @@ def test_create_replay_and_conflict_stage13(
         **headers,
     )
     assert conflict.status_code == 409
-    assert conflict.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
     assert Payment.objects.count() == 1
 
 
@@ -99,9 +101,10 @@ def test_owner_filter_and_missing_order_stage13(
             payment_url(order_id), {}, format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())
         )
         assert response.status_code == 404
-        assert response.json() == {
+        assert error_content(response) == {
             "code": "ORDER_NOT_FOUND",
-            "detail": "Order was not found.",
+            "message": "Order was not found.",
+            "details": {},
         }
     assert not Payment.objects.exists()
 
@@ -127,7 +130,7 @@ def test_strict_payload_stage13(api_client, customer, order_factory, payload, fi
     response = api_client.post(
         payment_url(order.pk), payload, format="json", HTTP_IDEMPOTENCY_KEY=str(uuid4())
     )
-    assert response.status_code == 400 and field in response.json()
+    assert response.status_code == 400 and field in response.json()["error"]["details"]
     assert not Payment.objects.exists()
 
 
@@ -137,7 +140,10 @@ def test_key_required_stage13(api_client, customer, order_factory, key):
     api_client.force_authenticate(user=customer)
     headers = {} if key is None else {"HTTP_IDEMPOTENCY_KEY": key}
     response = api_client.post(payment_url(order.pk), {}, format="json", **headers)
-    assert response.status_code == 400 and "idempotency_key" in response.json()
+    assert (
+        response.status_code == 400
+        and "idempotency_key" in response.json()["error"]["details"]
+    )
     assert not Payment.objects.exists()
 
 
@@ -194,7 +200,7 @@ def test_manager_cannot_mark_pending_paid_but_can_process_paid_stage13(
     api_client.force_authenticate(user=manager)
     blocked = api_client.patch(status_url, {"status": "PAID"}, format="json")
     assert blocked.status_code == 409
-    assert blocked.json()["code"] == "PAYMENT_CONFIRMATION_REQUIRED"
+    assert blocked.json()["error"]["code"] == "PAYMENT_CONFIRMATION_REQUIRED"
     create_payment(user=customer, order_id=order.pk, key=uuid4())
     accepted = api_client.patch(status_url, {"status": "PROCESSING"}, format="json")
     assert accepted.status_code == 200 and accepted.json()["status"] == "PROCESSING"
@@ -203,7 +209,7 @@ def test_manager_cannot_mark_pending_paid_but_can_process_paid_stage13(
         reverse("orders:cancel", kwargs={"pk": order.pk}), {}, format="json"
     )
     assert cancelled.status_code == 409
-    assert cancelled.json()["code"] == "ORDER_CANNOT_BE_CANCELLED"
+    assert cancelled.json()["error"]["code"] == "ORDER_CANNOT_BE_CANCELLED"
     assert Inventory.objects.get(variant=order_variants[0]).quantity == 8
     assert Payment.objects.get().status == "SUCCESS"
     assert Order.objects.get(pk=order.pk).status == "PROCESSING"

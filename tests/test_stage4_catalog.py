@@ -345,7 +345,7 @@ def test_required_fields_on_post(field, manager_client, reference_case):
     payload.pop(field)
     response = manager_client.post(_collection(reference_case), payload, format="json")
     assert response.status_code == 400
-    assert field in response.data
+    assert field in response.data["error"]["details"]
     assert model.objects.count() == 0
 
 
@@ -374,7 +374,7 @@ def test_invalid_post_does_not_create_row(
     payload = {"name": "Valid", "slug": "valid", **changes}
     response = manager_client.post(_collection(reference_case), payload, format="json")
     assert response.status_code == 400
-    assert field in response.data
+    assert field in response.data["error"]["details"]
     assert model.objects.count() == 0
 
 
@@ -397,7 +397,7 @@ def test_rejected_patch_preserves_all_fields(
         f"{_collection(reference_case)}{reference_record.pk}/", payload, format="json"
     )
     assert response.status_code == 400
-    assert field in response.data
+    assert field in response.data["error"]["details"]
     assert model.objects.values().get(pk=reference_record.pk) == before
 
 
@@ -409,7 +409,7 @@ def test_inactive_slug_is_still_unique(manager_client, reference_case):
         _collection(reference_case), {"name": "New", "slug": "taken"}, format="json"
     )
     assert response.status_code == 400
-    assert "slug" in response.data
+    assert "slug" in response.data["error"]["details"]
     assert model.objects.count() == 1
     old.refresh_from_db()
     assert old.name == "Old"
@@ -508,7 +508,7 @@ def test_cycle_or_missing_parent_patch_leaves_tree_unchanged(
         format="json",
     )
     assert response.status_code == 400
-    assert "parent" in response.data
+    assert "parent" in response.data["error"]["details"]
     assert list(Category.objects.order_by("id").values()) == before
 
 
@@ -520,7 +520,7 @@ def test_missing_parent_post_does_not_create_category(manager_client):
         format="json",
     )
     assert response.status_code == 400
-    assert "parent" in response.data
+    assert "parent" in response.data["error"]["details"]
     assert Category.objects.count() == 0
 
 
@@ -582,7 +582,7 @@ def test_category_timestamps_cannot_be_submitted(field, manager_client, category
         format="json",
     )
     assert response.status_code == 400
-    assert field in response.data
+    assert field in response.data["error"]["details"]
     assert Category.objects.values().get(pk=root.pk) == before
 
 
@@ -625,7 +625,7 @@ def test_existing_indirect_cycle_does_not_hang_validator(manager_client):
         format="json",
     )
     assert response.status_code == 400
-    assert "parent" in response.data
+    assert "parent" in response.data["error"]["details"]
     assert Category.objects.count() == 2
 
 

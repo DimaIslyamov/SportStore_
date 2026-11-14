@@ -60,7 +60,7 @@ def test_registration_rejects_duplicate_email(
     )
 
     assert response.status_code == 400
-    assert "email" in response.json()
+    assert "email" in response.json()["error"]["details"]
 
 
 @pytest.mark.parametrize(
@@ -88,7 +88,7 @@ def test_registration_rejects_forbidden_input(
     )
 
     assert response.status_code == 400
-    assert field in response.json()
+    assert field in response.json()["error"]["details"]
     assert not User.objects.filter(email=registration_payload["email"]).exists()
 
 
@@ -100,7 +100,7 @@ def test_registration_rejects_password_mismatch(api_client, registration_payload
     )
 
     assert response.status_code == 400
-    assert "password_confirm" in response.json()
+    assert "password_confirm" in response.json()["error"]["details"]
 
 
 @pytest.mark.parametrize("password", ["abc", "123456789", "password"])
@@ -117,7 +117,7 @@ def test_registration_rejects_weak_password(
     )
 
     assert response.status_code == 400
-    assert "password" in response.json()
+    assert "password" in response.json()["error"]["details"]
 
 
 def test_registration_rejects_invalid_email(api_client, registration_payload):
@@ -128,7 +128,7 @@ def test_registration_rejects_invalid_email(api_client, registration_payload):
     )
 
     assert response.status_code == 400
-    assert "email" in response.json()
+    assert "email" in response.json()["error"]["details"]
 
 
 def test_two_validated_registrations_get_controlled_duplicate_error(

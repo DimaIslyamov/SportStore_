@@ -1,7 +1,10 @@
+import logging
 from uuid import UUID
 
 from django.db import transaction
 from rest_framework.exceptions import PermissionDenied, ValidationError
+
+from core.logging import log_on_commit
 
 from accounts.models import User
 from orders import services as order_services
@@ -69,5 +72,13 @@ def create_payment(*, user, order_id, key, outcome="success"):
         order_services.change_order_status(
             order_id=order.pk, target_status=Order.Status.PAID
         )
+
+    log_on_commit(
+        "payment_succeeded" if result.succeeded else "payment_failed",
+        level=logging.INFO if result.succeeded else logging.WARNING,
+        payment_id=payment.pk,
+        order_id=order.pk,
+        user_id=user.pk,
+    )
 
     return payment, True

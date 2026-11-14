@@ -274,7 +274,7 @@ def test_client_cannot_submit_owner(
     response = send_request(authenticated_client, method, url, payload)
 
     assert response.status_code == 400
-    assert field in response.json()
+    assert field in response.json()["error"]["details"]
     assert Address.objects.count() == count_before
     assert address_state(own_address) == before
     assert not Address.objects.filter(user=other_customer).exists()
@@ -301,7 +301,7 @@ def test_patch_rejects_read_only_and_unknown_fields(
     )
 
     assert response.status_code == 400
-    assert field in response.json()
+    assert field in response.json()["error"]["details"]
     assert address_state(own_address) == before
 
 
@@ -329,7 +329,7 @@ def test_create_requires_delivery_fields(
     )
 
     assert response.status_code == 400
-    assert missing_field in response.json()
+    assert missing_field in response.json()["error"]["details"]
     assert not Address.objects.exists()
 
 
@@ -359,7 +359,7 @@ def test_invalid_input_does_not_change_database(
     response = send_request(authenticated_client, method, url, payload)
 
     assert response.status_code == 400
-    assert field in response.json()
+    assert field in response.json()["error"]["details"]
     assert Address.objects.count() == count_before
     assert address_state(own_address) == before
 
@@ -514,7 +514,7 @@ def test_invalid_default_switch_keeps_previous_selection(
     )
 
     assert response.status_code == 400
-    assert "city" in response.json()
+    assert "city" in response.json()["error"]["details"]
     assert address_state(own_address) == first_before
     assert address_state(second) == second_before
 
@@ -530,12 +530,14 @@ def test_failed_save_rolls_back_previous_default(
 
     monkeypatch.setattr(AddressSerializer, "create", fail_create)
 
-    with pytest.raises(IntegrityError):
-        authenticated_client.post(
-            reverse("accounts:address-list"),
-            {**address_payload, "is_default": True},
-            format="json",
-        )
+    response = authenticated_client.post(
+        reverse("accounts:address-list"),
+        {**address_payload, "is_default": True},
+        format="json",
+    )
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "INTERNAL_ERROR"
+    assert "Simulated failure" not in response.content.decode()
 
     assert Address.objects.count() == count_before
     assert address_state(own_address) == before

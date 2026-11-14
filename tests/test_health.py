@@ -26,7 +26,11 @@ def test_health_returns_503_without_exposing_database_error():
         response = client.get(reverse("core:health"))
 
     assert response.status_code == 503
-    assert response.json() == {"status": "error", "database": "unavailable"}
+    assert response.json()["error"]["code"] == "SERVICE_UNAVAILABLE"
+    assert response.json()["error"]["details"] == {
+        "status": "error",
+        "database": "unavailable",
+    }
     assert "internal database configuration" not in response.content.decode()
 
 

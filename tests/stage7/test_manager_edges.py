@@ -146,7 +146,7 @@ def test_invalid_product_create_has_no_side_effects(
     }
     payload[field] = value
     response = manager_api.post("/api/v1/products/", payload, format="json")
-    assert response.status_code == 400 and field in response.json()
+    assert response.status_code == 400 and field in response.json()["error"]["details"]
     assert Product.objects.count() == 1
 
 
@@ -170,7 +170,7 @@ def test_invalid_variant_create_does_not_create_stock(
     payload = {"sku": "NEW-EDGE", "price": "1.00"}
     payload[field] = value
     response = manager_api.post(endpoint_urls.variants, payload, format="json")
-    assert response.status_code == 400 and field in response.json()
+    assert response.status_code == 400 and field in response.json()["error"]["details"]
     assert ProductVariant.objects.count() == 1 and Inventory.objects.count() == 0
 
 

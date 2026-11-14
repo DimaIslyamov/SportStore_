@@ -5,6 +5,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
+from core.logging import log_on_commit
+
 from accounts.models import Address, User
 from cart.models import Cart
 from cart.rules import MAX_CART_QUANTITY, variant_is_active
@@ -252,6 +254,7 @@ def checkout(*, user, address_id):
 
         clear_cart(user=locked_user)
 
+        log_on_commit("order_created", order_id=order.pk, user_id=locked_user.pk)
         return checkout_order_queryset().get(pk=order.pk, user=locked_user)
 
 
@@ -319,9 +322,20 @@ def _apply_order_status(order, target_status, *, invalid_code):
     if target_status == Order.Status.CANCELLED:
         restore_inventory(order=order)
 
+    previous_status = order.status
     order.status = target_status
     order.save(update_fields=["status", "updated_at"])
-    return order 
+
+    log_on_commit(
+        "order_cancelled"
+        if target_status == Order.Status.CANCELLED
+        else "order_status_changed",
+        order_id=order.pk,
+        from_status=previous_status,
+        to_status=target_status,
+    )
+
+    return order
 
 
 @transaction.atomic

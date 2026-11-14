@@ -206,7 +206,7 @@ def test_jwt_role_matrix_without_denied_side_effects(
 )
 def test_strict_add_input_does_not_create_cart(customer_client, payload, key):
     response = customer_client.post(add_url(), payload, format="json")
-    assert response.status_code == 400 and key in response.json()
+    assert response.status_code == 400 and key in response.json()["error"]["details"]
     assert Cart.objects.count() == 0 and CartItem.objects.count() == 0
 
 

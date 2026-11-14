@@ -100,7 +100,7 @@ def test_profile_rejects_protected_fields(
     )
 
     assert response.status_code == 400
-    assert field in response.json()
+    assert field in response.json()["error"]["details"]
     customer.refresh_from_db()
     User = get_user_model()
     assert customer.email == original_email

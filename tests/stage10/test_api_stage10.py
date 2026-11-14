@@ -112,8 +112,8 @@ def test_strict_input_cannot_change_server_money_or_owner(
         response = client.post(checkout_url(), data, format="json")
         assert response.status_code == 400
 
-    assert set(response.json()) == {key}
-    assert isinstance(response.json()[key], list)
+    assert set(response.json()["error"]["details"]) == {key}
+    assert isinstance(response.json()["error"]["details"][key], list)
     assert checkout_state() == before
 
 
@@ -139,8 +139,8 @@ def test_checkout_rejects_non_integer_json_address_id(
         )
         assert response.status_code == 400
 
-    assert set(response.json()) == {"address_id"}
-    assert isinstance(response.json()["address_id"], list)
+    assert set(response.json()["error"]["details"]) == {"address_id"}
+    assert isinstance(response.json()["error"]["details"]["address_id"], list)
     assert checkout_state() == before
 
 
@@ -204,8 +204,8 @@ def test_local_business_errors_have_codes_without_side_effects(
     response = client.post(checkout_url(), {"address_id": address_id}, format="json")
 
     assert response.status_code == status_code
-    assert response.json()["code"] == code
-    assert isinstance(response.json()["detail"], str)
+    assert response.json()["error"]["code"] == code
+    assert isinstance(response.json()["error"]["message"], str)
     assert checkout_state() == before
 
 

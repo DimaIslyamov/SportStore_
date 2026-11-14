@@ -1,4 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
+
+from tests.error_contract import error_content, stored_domain_error
 from datetime import timedelta
 from queue import Queue
 from threading import Event
@@ -71,7 +73,9 @@ def test_invalid_header_and_body_do_not_reserve_key(checkout_factory, checkout_s
         (post(access, key, case.address.pk, total="0.01"), "total"),
     ]
     for response, field in bad:
-        assert response.status_code == 400 and field in response.json()
+        assert (
+            response.status_code == 400 and field in response.json()["error"]["details"]
+        )
     assert not IdempotencyRecord.objects.exists()
     assert checkout_state() == before
 
@@ -94,7 +98,7 @@ def test_success_replay_and_payload_conflict(checkout_factory, checkout_state):
     assert replay.status_code == 201 and replay.json() == body
     conflict = post(access, key, case.address.pk + 1)
     assert conflict.status_code == 409
-    assert conflict.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
     assert checkout_state() == before
 
 
@@ -114,13 +118,16 @@ def test_late_business_failure_rolls_back_and_replays(
         patch.setattr(services, "clear_cart", clear_then_fail)
         failed = post(access, key, case.address.pk)
     assert failed.status_code == 409
-    assert failed.json()["code"] == "CHECKOUT_DATA_INVALID"
+    assert failed.json()["error"]["code"] == "CHECKOUT_DATA_INVALID"
     assert checkout_state() == before
     record = IdempotencyRecord.objects.get(key=key)
     assert record.status == State.FAILED and record.resource_id is None
-    assert record.response_status_code == 409 and record.response_body == failed.json()
+    assert (
+        record.response_status_code == 409
+        and record.response_body == stored_domain_error(failed)
+    )
     replay = post(access, key, case.address.pk)
-    assert replay.status_code == 409 and replay.json() == failed.json()
+    assert replay.status_code == 409 and error_content(replay) == error_content(failed)
     assert checkout_state() == before
     assert post(access, uuid4(), case.address.pk).status_code == 201
 
@@ -139,17 +146,18 @@ def test_command_recovers_orphan_and_purges_only_results(checkout_factory):
     )
     pending = post(access, key, case.address.pk)
     assert pending.status_code == 409
-    assert pending.json()["code"] == "IDEMPOTENCY_IN_PROGRESS"
+    assert pending.json()["error"]["code"] == "IDEMPOTENCY_IN_PROGRESS"
 
     call_command("cleanup_checkout_idempotency", "--batch-size", "10")
     failed = post(access, key, case.address.pk)
     assert (
-        failed.status_code == 503 and failed.json()["code"] == idempotency.ABORTED_CODE
+        failed.status_code == 503
+        and failed.json()["error"]["code"] == idempotency.ABORTED_CODE
     )
     delayed = idempotency._execute(
         record_id=orphan.pk, user=case.user, address_id=case.address.pk
     )
-    assert delayed.status_code == 503 and delayed.body == failed.json()
+    assert delayed.status_code == 503 and delayed.body == stored_domain_error(failed)
     assert not Order.objects.exists()
 
     success = post(access, uuid4(), case.address.pk)
@@ -256,20 +264,20 @@ def test_first_insert_race_and_processing_while_cart_locked(
                 busy, _ = start(pool, lambda: post(access, key, address_id))
                 result = busy.result(timeout=5)
                 assert result.status_code == 503
-                assert result.json()["code"] == "IDEMPOTENCY_RESERVATION_BUSY"
+                assert result.json()["error"]["code"] == "IDEMPOTENCY_RESERVATION_BUSY"
             finally:
                 release.set()
 
             assert_blocked(first_pid, holder_pid)
             collision = repeat.result(timeout=5)
             assert collision.status_code == 409
-            assert collision.json()["code"] == "IDEMPOTENCY_IN_PROGRESS"
+            assert collision.json()["error"]["code"] == "IDEMPOTENCY_IN_PROGRESS"
             assert IdempotencyRecord.objects.get(key=key).status == State.PROCESSING
             monkeypatch.setattr(idempotency, "RECOVERY_AFTER", timedelta(0))
             changed, _ = start(pool, changed_payload)
             response = changed.result(timeout=5)
             assert response.status_code == 409
-            assert response.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+            assert response.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
             assert not Order.objects.exists()
         assert first.result(timeout=10).status_code == 201
 
@@ -321,7 +329,7 @@ def test_late_unique_collision_times_out_then_reads_processing(
             collision = repeat.result(timeout=5)
             assert timed_out.is_set()
             assert collision.status_code == 409
-            assert collision.json()["code"] == "IDEMPOTENCY_IN_PROGRESS"
+            assert collision.json()["error"]["code"] == "IDEMPOTENCY_IN_PROGRESS"
             assert not Order.objects.exists()
         finally:
             allow_insert.set()
@@ -364,9 +372,13 @@ def test_two_users_compete_for_same_inventory(
             release.set()
         assert first.result(timeout=10).status_code == 201
         failed = second.result(timeout=10)
-    assert failed.status_code == 409 and failed.json()["code"] == "OUT_OF_STOCK"
+    assert (
+        failed.status_code == 409 and failed.json()["error"]["code"] == "OUT_OF_STOCK"
+    )
     loser = IdempotencyRecord.objects.get(key=key, user=second_case.user)
-    assert loser.status == State.FAILED and loser.response_body == failed.json()
+    assert loser.status == State.FAILED and loser.response_body == stored_domain_error(
+        failed
+    )
     assert IdempotencyRecord.objects.filter(key=key).count() == 2
     assert Order.objects.count() == 1
     assert Inventory.objects.get(variant=variant).quantity == 0
@@ -398,8 +410,10 @@ def test_interruption_around_commit(
             else:
                 patch.setattr(idempotency, "_finish", fail_before_commit)
             first, first_pid = start(pool, lambda: post(access, key, address_id))
-            with pytest.raises(RuntimeError, match="Injected interruption"):
-                first.result(timeout=10)
+            failed_response = first.result(timeout=10)
+            assert failed_response.status_code == 500
+            assert error_content(failed_response)["code"] == "INTERNAL_ERROR"
+            assert "Injected interruption" not in failed_response.content.decode()
 
         record = IdempotencyRecord.objects.get(key=key)
         after = checkout_state()
@@ -415,4 +429,3 @@ def test_interruption_around_commit(
         assert record.status == State.PROCESSING and record.resource_id is None
         assert response.status_code == 409 and after == before
     assert checkout_state() == after
-    

@@ -157,7 +157,7 @@ def test_invalid_file_never_reaches_storage(
             "corrupt.png", bytes(payload), content_type="image/png"
         )
     response = manager_api.post(endpoint_urls.images, data, format="multipart")
-    assert response.status_code == 400 and "file" in response.json()
+    assert response.status_code == 400 and "file" in response.json()["error"]["details"]
     assert fake_storage.events == []
 
 
@@ -198,9 +198,11 @@ def test_upload_failure_does_not_create_or_replace(
             url, {"file": file_factory()}, format="multipart"
         )
         assert response.status_code == 503
-        assert response.json() == {
-            "detail": "Image storage is temporarily unavailable."
-        }
+        assert response.json()["error"]["code"] == "image_storage_unavailable"
+        assert (
+            response.json()["error"]["message"]
+            == "Image storage is temporarily unavailable."
+        )
     stage7_image.refresh_from_db()
     assert ProductImage.objects.count() == before
     assert (

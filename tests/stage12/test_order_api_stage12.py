@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from tests.error_contract import error_content
+
 import pytest
 from django.urls import reverse
 from rest_framework_simplejwt.tokens import AccessToken
@@ -56,7 +58,9 @@ def test_jwt_permissions(
     )
     assert status_response.status_code == status_code
     if status_code == 409:
-        assert status_response.json()["code"] == "PAYMENT_CONFIRMATION_REQUIRED"
+        assert (
+            status_response.json()["error"]["code"] == "PAYMENT_CONFIRMATION_REQUIRED"
+        )
 
     cancel_response = api_client.post(reverse("orders:cancel", kwargs=kwargs))
     assert cancel_response.status_code == cancel_code
@@ -70,7 +74,11 @@ def test_order_visibility(api_client, customer, other_customer, manager, order_f
     own = {"pk": own_order.pk}
     foreign = {"pk": foreign_order.pk}
     missing = {"pk": 9_223_372_036_854_775_807}
-    not_found = {"code": "ORDER_NOT_FOUND", "detail": "Order was not found."}
+    not_found = {
+        "code": "ORDER_NOT_FOUND",
+        "message": "Order was not found.",
+        "details": {},
+    }
 
     api_client.force_authenticate(user=customer)
     response = api_client.get(reverse("orders:list"))
@@ -96,7 +104,7 @@ def test_order_visibility(api_client, customer, other_customer, manager, order_f
         read = api_client.get(reverse("orders:detail", kwargs=lookup))
         cancel = api_client.post(reverse("orders:cancel", kwargs=lookup))
         assert read.status_code == cancel.status_code == 404
-        assert read.json() == cancel.json() == not_found
+        assert error_content(read) == error_content(cancel) == not_found
 
     api_client.force_authenticate(user=manager)
     response = api_client.get(reverse("orders:list"))
@@ -113,7 +121,7 @@ def test_order_visibility(api_client, customer, other_customer, manager, order_f
         reverse("orders:status", kwargs=missing), {"status": "PAID"}, format="json"
     )
     assert read.status_code == change.status_code == 404
-    assert read.json() == change.json() == not_found
+    assert error_content(read) == error_content(change) == not_found
 
 
 def test_empty_list_and_superuser_visibility(
@@ -153,7 +161,7 @@ def test_status_payload_is_strict(api_client, manager, order_factory, payload, f
         reverse("orders:status", kwargs={"pk": order.pk}), payload, format="json"
     )
     assert response.status_code == 400
-    assert field in response.json()
+    assert field in response.json()["error"]["details"]
     order.refresh_from_db()
     assert order.status == Order.Status.PENDING
 
@@ -167,7 +175,7 @@ def test_cancel_payload_cannot_set_status(api_client, customer, order_factory):
         format="json",
     )
     assert response.status_code == 400
-    assert "status" in response.json()
+    assert "status" in response.json()["error"]["details"]
     order.refresh_from_db()
     assert order.status == Order.Status.PENDING
 
@@ -181,7 +189,7 @@ def test_status_action_handles_conflict_and_restoration(
 
     forbidden = api_client.patch(url, {"status": "PROCESSING"}, format="json")
     assert forbidden.status_code == 409
-    assert forbidden.json()["code"] == "INVALID_ORDER_STATUS_TRANSITION"
+    assert forbidden.json()["error"]["code"] == "INVALID_ORDER_STATUS_TRANSITION"
 
     cancelled = api_client.patch(url, {"status": "CANCELLED"}, format="json")
     assert cancelled.status_code == 200
@@ -189,7 +197,7 @@ def test_status_action_handles_conflict_and_restoration(
 
     repeated = api_client.patch(url, {"status": "CANCELLED"}, format="json")
     assert repeated.status_code == 409
-    assert repeated.json()["code"] == "INVALID_ORDER_STATUS_TRANSITION"
+    assert repeated.json()["error"]["code"] == "INVALID_ORDER_STATUS_TRANSITION"
     assert Inventory.objects.get(variant=order_variants[0]).quantity == 10
 
 

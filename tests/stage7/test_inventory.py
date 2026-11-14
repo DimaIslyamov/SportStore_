@@ -18,7 +18,10 @@ def test_invalid_stock_keeps_existing_row(
     response = manager_api.patch(
         endpoint_urls.inventory, {"quantity": value}, format="json"
     )
-    assert response.status_code == 400 and "quantity" in response.json()
+    assert (
+        response.status_code == 400
+        and "quantity" in response.json()["error"]["details"]
+    )
     inventory.refresh_from_db()
     assert (inventory.quantity, inventory.updated_at) == before
 

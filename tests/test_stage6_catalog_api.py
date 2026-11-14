@@ -173,7 +173,7 @@ def test_missing_detail_is_404(api_client):
         reverse("catalog:product-detail", kwargs={"slug": "unknown"})
     )
     assert response.status_code == 404
-    assert "detail" in response.json()
+    assert "message" in response.json()["error"]
 
 
 @pytest.mark.parametrize("target", ["product", "brand", "category"])
@@ -385,7 +385,7 @@ def test_category_and_brand_do_not_match_other_products(
 def test_invalid_parameters_return_400(api_client, params, error_key):
     response = api_client.get(list_url(), params)
     assert response.status_code == 400
-    assert error_key in response.json()
+    assert error_key in response.json()["error"]["details"]
 
 
 @pytest.mark.parametrize(
@@ -456,7 +456,7 @@ def test_pagination_counts_products_not_related_rows(
 def test_invalid_or_out_of_range_page_is_404(api_client, mixed_catalog, page):
     response = api_client.get(list_url(), {"page": page})
     assert response.status_code == 404
-    assert "detail" in response.json()
+    assert "message" in response.json()["error"]
 
 
 def test_blank_page_is_first_page(api_client, mixed_catalog):
