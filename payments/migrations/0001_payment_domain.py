@@ -7,32 +7,109 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('orders', '0002_checkout_idempotency'),
+        ("orders", "0002_checkout_idempotency"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Payment',
+            name="Payment",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('key', models.UUIDField()),
-                ('fake_outcome', models.CharField(choices=[('success', 'Success'), ('failed', 'Failed')], max_length=7)),
-                ('status', models.CharField(choices=[('PENDING', 'Pending'), ('SUCCESS', 'Success'), ('FAILED', 'Failed'), ('REFUNDED', 'Refunded')], default='PENDING', max_length=8)),
-                ('provider', models.CharField(default='FAKE', max_length=16)),
-                ('external_id', models.CharField(blank=True, default='', max_length=80)),
-                ('amount', models.DecimalField(decimal_places=2, max_digits=18, validators=[django.core.validators.MinValueValidator(Decimal('0.00'))])),
-                ('currency', models.CharField(default='PLN', max_length=3)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('order', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='payments', to='orders.order')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("key", models.UUIDField()),
+                (
+                    "fake_outcome",
+                    models.CharField(
+                        choices=[("success", "Success"), ("failed", "Failed")],
+                        max_length=7,
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("PENDING", "Pending"),
+                            ("SUCCESS", "Success"),
+                            ("FAILED", "Failed"),
+                            ("REFUNDED", "Refunded"),
+                        ],
+                        default="PENDING",
+                        max_length=8,
+                    ),
+                ),
+                ("provider", models.CharField(default="FAKE", max_length=16)),
+                (
+                    "external_id",
+                    models.CharField(blank=True, default="", max_length=80),
+                ),
+                (
+                    "amount",
+                    models.DecimalField(
+                        decimal_places=2,
+                        max_digits=18,
+                        validators=[
+                            django.core.validators.MinValueValidator(Decimal("0.00"))
+                        ],
+                    ),
+                ),
+                ("currency", models.CharField(default="PLN", max_length=3)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "order",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="payments",
+                        to="orders.order",
+                    ),
+                ),
             ],
             options={
-                'ordering': ('created_at', 'id'),
-                'constraints': [models.UniqueConstraint(fields=('order', 'key'), name='pay_order_key_unique'), models.UniqueConstraint(condition=models.Q(('status', 'SUCCESS')), fields=('order',), name='pay_one_success_per_order'), models.CheckConstraint(condition=models.Q(('status__in', ['PENDING', 'SUCCESS', 'FAILED', 'REFUNDED'])), name='pay_status_valid'), models.CheckConstraint(condition=models.Q(('amount__gte', Decimal('0.00')), ('amount__lte', Decimal('9999999999999999.99'))), name='pay_amount_range'), models.CheckConstraint(condition=models.Q(('currency', 'PLN')), name='pay_currency_pln'), models.CheckConstraint(condition=models.Q(('provider', 'FAKE')), name='pay_provider_fake'), models.CheckConstraint(condition=models.Q(('fake_outcome__in', ['success', 'failed'])), name='pay_fake_outcome_valid')],
+                "ordering": ("created_at", "id"),
+                "constraints": [
+                    models.UniqueConstraint(
+                        fields=("order", "key"), name="pay_order_key_unique"
+                    ),
+                    models.UniqueConstraint(
+                        condition=models.Q(("status", "SUCCESS")),
+                        fields=("order",),
+                        name="pay_one_success_per_order",
+                    ),
+                    models.CheckConstraint(
+                        condition=models.Q(
+                            ("status__in", ["PENDING", "SUCCESS", "FAILED", "REFUNDED"])
+                        ),
+                        name="pay_status_valid",
+                    ),
+                    models.CheckConstraint(
+                        condition=models.Q(
+                            ("amount__gte", Decimal("0.00")),
+                            ("amount__lte", Decimal("9999999999999999.99")),
+                        ),
+                        name="pay_amount_range",
+                    ),
+                    models.CheckConstraint(
+                        condition=models.Q(("currency", "PLN")), name="pay_currency_pln"
+                    ),
+                    models.CheckConstraint(
+                        condition=models.Q(("provider", "FAKE")),
+                        name="pay_provider_fake",
+                    ),
+                    models.CheckConstraint(
+                        condition=models.Q(("fake_outcome__in", ["success", "failed"])),
+                        name="pay_fake_outcome_valid",
+                    ),
+                ],
             },
         ),
     ]

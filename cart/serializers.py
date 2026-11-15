@@ -68,13 +68,13 @@ class CartItemOutputSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
-    def get_line_total(self, obj):
+    def get_line_total(self, obj) -> str:
         return format(_line_total(obj), ".2f")
 
-    def get_is_available(self, obj):
+    def get_is_available(self, obj) -> bool:
         return variant_is_active(obj.variant) and _inventory_quantity(obj.variant) > 0
 
-    def get_has_sufficient_stock(self, obj):
+    def get_has_sufficient_stock(self, obj) -> bool:
         return (
             variant_is_active(obj.variant)
             and _inventory_quantity(obj.variant) >= obj.quantity
@@ -105,15 +105,15 @@ class CartOutputSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
-    def get_currency(self, obj):
+    def get_currency(self, obj) -> str:
         return "PLN"
 
-    def get_items_count(self, obj):
+    def get_items_count(self, obj) -> int:
         return len(obj.loaded_items)
 
-    def get_total_quantity(self, obj):
+    def get_total_quantity(self, obj) -> int:
         return sum(item.quantity for item in obj.loaded_items)
 
-    def get_subtotal(self, obj):
+    def get_subtotal(self, obj) -> str:
         total = sum((_line_total(item) for item in obj.loaded_items), Decimal("0.00"))
         return format(total, ".2f")

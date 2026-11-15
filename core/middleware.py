@@ -25,7 +25,6 @@ class RequestContextMiddleware:
                 and response.status_code >= 400
                 and not response.streaming
             ):
-
                 try:
                     data = (
                         json.loads(response.content) if not response.streaming else {}
@@ -85,4 +84,3 @@ class RequestContextMiddleware:
         request.exception_type = type(exception).__name__
 
         return JsonResponse(error_payload({}, 500, request.request_id), status=500)
-    

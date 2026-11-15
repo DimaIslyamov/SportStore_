@@ -7,7 +7,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import get_object_or_404
 
+from drf_spectacular.utils import extend_schema, extend_schema_view
+
 from accounts.permissions import IsManager
+from core.schema import (
+    AUTH_ERRORS,
+    COMMON_ERRORS,
+    ERROR_RESPONSES,
+    REQUEST_ID_RESPONSE,
+)
 
 from . import services
 from .manager_serializers import (
@@ -21,6 +29,17 @@ from .models import Inventory, Product, ProductImage, ProductVariant
 from .product_serializers import ProductImageSerializer
 
 
+IMAGE_METADATA_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "alt_text": {"type": "string", "maxLength": 255},
+        "position": {"type": "integer", "minimum": 0, "maximum": 2147483647},
+        "is_primary": {"type": "boolean"},
+    },
+    "additionalProperties": False,
+}
+
+
 def input_data(request):
     data = request.data
     return data.dict() if hasattr(data, "dict") else data
@@ -30,6 +49,23 @@ class ManagerView(APIView):
     permission_classes = [IsAuthenticated, IsManager]
 
 
+@extend_schema(tags=["Manager Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    post=extend_schema(
+        operation_id="variants_create",
+        summary="Создать вариант и Inventory с нулевым остатком",
+        description="MANAGER или superuser. Product определяется product_id в URL.",
+        request=VariantInputSerializer,
+        responses={
+            201: VariantOutputSerializer,
+            400: ERROR_RESPONSES[400],
+            404: ERROR_RESPONSES[404],
+            415: ERROR_RESPONSES[415],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 class VariantCreateView(ManagerView):
     http_method_names = ["post", "options"]
 
@@ -43,6 +79,26 @@ class VariantCreateView(ManagerView):
         )
 
 
+@extend_schema(tags=["Manager Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    patch=extend_schema(
+        operation_id="variants_update",
+        summary="Частично изменить вариант товара",
+        description=(
+            "MANAGER или superuser. SKU неизменяем; price принадлежит Variant. "
+            "Variant должен относиться к product_id."
+        ),
+        request=VariantInputSerializer,
+        responses={
+            200: VariantOutputSerializer,
+            400: ERROR_RESPONSES[400],
+            404: ERROR_RESPONSES[404],
+            415: ERROR_RESPONSES[415],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 class VariantUpdateView(ManagerView):
     http_method_names = ["patch", "options"]
 
@@ -60,6 +116,37 @@ class VariantUpdateView(ManagerView):
         return Response(VariantOutputSerializer(updated).data)
 
 
+@extend_schema(tags=["Manager Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="inventory_retrieve",
+        summary="Получить остаток варианта",
+        description="MANAGER или superuser. Variant должен принадлежать Product.",
+        responses={
+            200: InventoryOutputSerializer,
+            404: ERROR_RESPONSES[404],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+    patch=extend_schema(
+        operation_id="inventory_update",
+        summary="Установить абсолютный остаток варианта",
+        description=(
+            "MANAGER или superuser. quantity обязателен, диапазон 0..2147483647. "
+            "Это новое абсолютное значение, не прибавление к прежнему остатку."
+        ),
+        request=InventoryInputSerializer,
+        responses={
+            200: InventoryOutputSerializer,
+            400: ERROR_RESPONSES[400],
+            404: ERROR_RESPONSES[404],
+            415: ERROR_RESPONSES[415],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 class InventoryView(ManagerView):
     http_method_names = ["get", "patch", "head", "options"]
 
@@ -80,6 +167,29 @@ class InventoryView(ManagerView):
         return Response(InventoryOutputSerializer(inventory).data)
 
 
+@extend_schema(tags=["Manager Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    post=extend_schema(
+        operation_id="images_create",
+        summary="Загрузить изображение Product",
+        description=(
+            "MANAGER или superuser. Для загрузки файла используй multipart/form-data. "
+            "Поле называется file. JPEG/PNG/WebP до 5 MiB, сторона до 6000 px, "
+            "до 20000000 пикселей, без анимации. "
+            "Ошибка хранилища: 503 image_storage_unavailable."
+        ),
+        request={"multipart/form-data": ImageInputSerializer},
+        responses={
+            201: ProductImageSerializer,
+            400: ERROR_RESPONSES[400],
+            404: ERROR_RESPONSES[404],
+            415: ERROR_RESPONSES[415],
+            503: ERROR_RESPONSES[503],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 @method_decorator(transaction.non_atomic_requests, name="dispatch")
 class ImageCreateView(ManagerView):
     http_method_names = ["post", "options"]
@@ -95,6 +205,44 @@ class ImageCreateView(ManagerView):
         )
 
 
+@extend_schema(tags=["Manager Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    patch=extend_schema(
+        operation_id="images_update",
+        summary="Изменить метаданные или заменить изображение",
+        description=(
+            "MANAGER или superuser. PATCH частичный: file можно не присылать. "
+            "Метаданные можно отправить JSON, замену файла — multipart/form-data. "
+            "Form-urlencoded также поддержан существующим parser. "
+            "Ограничения файла такие же, как при создании."
+        ),
+        request={
+            "multipart/form-data": ImageInputSerializer,
+            "application/json": IMAGE_METADATA_SCHEMA,
+            "application/x-www-form-urlencoded": IMAGE_METADATA_SCHEMA,
+        },
+        responses={
+            200: ProductImageSerializer,
+            400: ERROR_RESPONSES[400],
+            404: ERROR_RESPONSES[404],
+            415: ERROR_RESPONSES[415],
+            503: ERROR_RESPONSES[503],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+    delete=extend_schema(
+        operation_id="images_delete",
+        summary="Удалить изображение",
+        request=None,
+        responses={
+            204: None,
+            404: ERROR_RESPONSES[404],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 @method_decorator(transaction.non_atomic_requests, name="dispatch")
 class ImageUpdateDeleteView(ManagerView):
     http_method_names = ["patch", "delete", "options"]

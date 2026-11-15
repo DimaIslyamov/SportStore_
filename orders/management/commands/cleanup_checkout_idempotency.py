@@ -17,4 +17,3 @@ class Command(BaseCommand):
 
         recovered, deleted = cleanup_expired_checkout_keys(batch_size=size)
         self.stdout.write(f"Recovered: {recovered}. Deleted: {deleted}.")
-        

@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "drf_spectacular",
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "accounts.apps.AccountsConfig",
@@ -103,6 +104,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "core.errors.exception_handler",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
@@ -111,6 +113,43 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
+    ],
+}
+
+SPECTACULAR_SETTINGS = {
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "core.schema.require_command_fields",
+    ],
+    "TITLE": "SportStore API",
+    "DESCRIPTION": (
+        "Diploma MVP интернет-магазина спортивных товаров. "
+        "Денежные суммы возвращаются десятичными строками, валюта PLN. "
+        "Ошибки: error.code/message/details/request_id. "
+        "Каждый ответ содержит X-Request-ID. "
+        "JWT подтверждает пользователя; роли и ownership проверяет API."
+    ),
+    "VERSION": "1.0.0",
+    "OAS_VERSION": "3.0.3",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SERVE_PUBLIC": True,
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "SERVE_AUTHENTICATION": [],
+    "COMPONENT_SPLIT_REQUEST": True,
+    "ENUM_NAME_OVERRIDES": {
+        "OrderStatusEnum": "orders.models.Order.Status",
+        "PaymentStatusEnum": "payments.models.Payment.Status",
+    },
+    "TAGS": [
+        {"name": "Health", "description": "Доступность API и PostgreSQL"},
+        {"name": "Authentication", "description": "Регистрация и JWT"},
+        {"name": "Users", "description": "Собственный профиль"},
+        {"name": "Addresses", "description": "Адреса Customer"},
+        {"name": "Catalog", "description": "Чтение каталога и справочники"},
+        {"name": "Manager Catalog", "description": "Управление каталогом"},
+        {"name": "Cart", "description": "Корзина Customer"},
+        {"name": "Orders", "description": "Checkout и lifecycle заказов"},
+        {"name": "Payments", "description": "Синхронные fake-попытки оплаты"},
     ],
 }
 

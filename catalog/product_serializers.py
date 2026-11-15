@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 
 from .models import Inventory, Product, ProductImage, ProductVariant
 
@@ -39,7 +40,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         fields = ("id", "sku", "price", "in_stock", "attributes")
         read_only_fields = fields
 
-    def get_in_stock(self, obj):
+    def get_in_stock(self, obj) -> bool:
         try:
             return obj.inventory.quantity > 0
         except Inventory.DoesNotExist:
@@ -71,9 +72,10 @@ class ProductListSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
-    def get_currency(self, obj):
+    def get_currency(self, obj) -> str:
         return "PLN"
 
+    @extend_schema_field(ProductImageSerializer(allow_null=True))
     def get_primary_image(self, obj):
         images = obj.public_images
         chosen = next((image for image in images if image.is_primary), None)

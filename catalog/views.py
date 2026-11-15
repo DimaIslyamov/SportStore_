@@ -5,7 +5,20 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_view,
+)
+
 from accounts.permissions import IsManager
+from core.schema import (
+    AUTH_ERRORS,
+    COMMON_ERRORS,
+    ERROR_RESPONSES,
+    REQUEST_ID_RESPONSE,
+)
 
 from . import services
 from .filters import ProductQuerySerializer
@@ -39,12 +52,83 @@ class CatalogDetailLookupMixin:
         return obj
 
 
+@extend_schema(tags=["Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="categories_list",
+        summary="Получить активные категории без пагинации",
+        responses={
+            200: CategorySerializer(many=True),
+            401: ERROR_RESPONSES[401],
+            **COMMON_ERRORS,
+        },
+    ),
+    post=extend_schema(
+        operation_id="categories_create",
+        summary="Создать категорию",
+        description="Требуется MANAGER или superuser. parent — ID категории или null.",
+        request=CategorySerializer,
+        responses={
+            201: CategorySerializer,
+            400: ERROR_RESPONSES[400],
+            415: ERROR_RESPONSES[415],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 class CategoryListCreateView(CatalogAccessMixin, generics.ListCreateAPIView):
     serializer_class = CategorySerializer
     queryset = Category.objects.filter(is_active=True)
     http_method_names = ["get", "post", "head", "options"]
 
 
+@extend_schema(tags=["Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="categories_retrieve",
+        summary="Получить активную категорию по slug",
+        parameters=[
+            OpenApiParameter(
+                "lookup",
+                OpenApiTypes.STR,
+                OpenApiParameter.PATH,
+                required=True,
+                description="Slug категории, например running.",
+            ),
+        ],
+        responses={
+            200: CategorySerializer,
+            401: ERROR_RESPONSES[401],
+            404: ERROR_RESPONSES[404],
+            **COMMON_ERRORS,
+        },
+    ),
+    patch=extend_schema(
+        operation_id="categories_update",
+        summary="Частично изменить категорию по ID",
+        description="MANAGER или superuser. Slug нельзя изменить после создания.",
+        parameters=[
+            OpenApiParameter(
+                "lookup",
+                OpenApiTypes.STR,
+                OpenApiParameter.PATH,
+                required=True,
+                pattern="^[0-9]+$",
+                description="Числовой ID в строковом сегменте, например 12.",
+            ),
+        ],
+        request=CategorySerializer,
+        responses={
+            200: CategorySerializer,
+            400: ERROR_RESPONSES[400],
+            404: ERROR_RESPONSES[404],
+            415: ERROR_RESPONSES[415],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 class CategoryDetailView(
     CatalogAccessMixin,
     CatalogDetailLookupMixin,
@@ -60,12 +144,83 @@ class CategoryDetailView(
         return queryset
 
 
+@extend_schema(tags=["Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="brands_list",
+        summary="Получить активные бренды без пагинации",
+        responses={
+            200: BrandSerializer(many=True),
+            401: ERROR_RESPONSES[401],
+            **COMMON_ERRORS,
+        },
+    ),
+    post=extend_schema(
+        operation_id="brands_create",
+        summary="Создать бренд",
+        description="Требуется MANAGER или superuser.",
+        request=BrandSerializer,
+        responses={
+            201: BrandSerializer,
+            400: ERROR_RESPONSES[400],
+            415: ERROR_RESPONSES[415],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 class BrandListCreateView(CatalogAccessMixin, generics.ListCreateAPIView):
     serializer_class = BrandSerializer
     queryset = Brand.objects.filter(is_active=True)
     http_method_names = ["get", "post", "head", "options"]
 
 
+@extend_schema(tags=["Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="brands_retrieve",
+        summary="Получить активный бренд по slug",
+        parameters=[
+            OpenApiParameter(
+                "lookup",
+                OpenApiTypes.STR,
+                OpenApiParameter.PATH,
+                required=True,
+                description="Slug бренда, например nike.",
+            ),
+        ],
+        responses={
+            200: BrandSerializer,
+            401: ERROR_RESPONSES[401],
+            404: ERROR_RESPONSES[404],
+            **COMMON_ERRORS,
+        },
+    ),
+    patch=extend_schema(
+        operation_id="brands_update",
+        summary="Частично изменить бренд по ID",
+        description="MANAGER или superuser. Slug после создания неизменяем.",
+        parameters=[
+            OpenApiParameter(
+                "lookup",
+                OpenApiTypes.STR,
+                OpenApiParameter.PATH,
+                required=True,
+                pattern="^[0-9]+$",
+                description="Числовой ID бренда в строковом сегменте.",
+            ),
+        ],
+        request=BrandSerializer,
+        responses={
+            200: BrandSerializer,
+            400: ERROR_RESPONSES[400],
+            404: ERROR_RESPONSES[404],
+            415: ERROR_RESPONSES[415],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 class BrandDetailView(
     CatalogAccessMixin,
     CatalogDetailLookupMixin,
@@ -81,6 +236,44 @@ class BrandDetailView(
         return queryset
 
 
+@extend_schema(tags=["Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="products_list",
+        summary="Каталог с фильтрами, поиском и пагинацией",
+        description=(
+            "Публичные активные товары с активными Category/Brand и вариантом. "
+            "category/brand — slug. Цена — минимальная цена активного варианта. "
+            "search ищет по name и description. ordering: name, price, -price; "
+            "по умолчанию name. min_price <= max_price. Страница — 12 товаров; "
+            "page_size и page=last не поддерживаются."
+        ),
+        parameters=[ProductQuerySerializer],
+        responses={
+            200: ProductListSerializer(many=True),
+            400: ERROR_RESPONSES[400],
+            401: ERROR_RESPONSES[401],
+            404: ERROR_RESPONSES[404],
+            **COMMON_ERRORS,
+        },
+    ),
+    post=extend_schema(
+        operation_id="products_create",
+        summary="Создать Product",
+        description=(
+            "MANAGER или superuser. category и brand — числовые ID. "
+            "У Product нет price: цены задаются у вариантов отдельным endpoint."
+        ),
+        request=ProductInputSerializer,
+        responses={
+            201: ProductOutputSerializer,
+            400: ERROR_RESPONSES[400],
+            415: ERROR_RESPONSES[415],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 class ProductListView(CatalogAccessMixin, generics.ListAPIView):
     http_method_names = ["get", "post", "head", "options"]
     serializer_class = ProductListSerializer
@@ -125,6 +318,56 @@ class ProductListView(CatalogAccessMixin, generics.ListAPIView):
         )
 
 
+@extend_schema(tags=["Catalog"], parameters=[REQUEST_ID_RESPONSE])
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="products_retrieve",
+        summary="Получить Product detail по slug",
+        parameters=[
+            OpenApiParameter(
+                "slug",
+                OpenApiTypes.STR,
+                OpenApiParameter.PATH,
+                required=True,
+                description="Slug товара, например running-shirt.",
+            ),
+        ],
+        responses={
+            200: ProductDetailSerializer,
+            401: ERROR_RESPONSES[401],
+            404: ERROR_RESPONSES[404],
+            **COMMON_ERRORS,
+        },
+    ),
+    patch=extend_schema(
+        operation_id="products_update",
+        summary="Частично изменить Product по ID",
+        description=(
+            "MANAGER или superuser. Параметр называется slug по существующему "
+            "URLconf, но для PATCH принимает числовой ID. Slug неизменяем. "
+            "Ответ manager имеет category/brand IDs, а не public nested objects."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "slug",
+                OpenApiTypes.STR,
+                OpenApiParameter.PATH,
+                required=True,
+                pattern="^[0-9]+$",
+                description="ID товара в существующем строковом сегменте пути.",
+            ),
+        ],
+        request=ProductInputSerializer,
+        responses={
+            200: ProductOutputSerializer,
+            400: ERROR_RESPONSES[400],
+            404: ERROR_RESPONSES[404],
+            415: ERROR_RESPONSES[415],
+            **AUTH_ERRORS,
+            **COMMON_ERRORS,
+        },
+    ),
+)
 class ProductDetailView(CatalogAccessMixin, generics.RetrieveAPIView):
     http_method_names = ["get", "patch", "head", "options"]
     serializer_class = ProductDetailSerializer
