@@ -21,6 +21,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from cart import services as cart_services
 from cart.models import Cart, CartItem
 from catalog.models import Inventory
 from orders import idempotency, services, views
@@ -166,6 +167,97 @@ def test_command_recovers_orphan_and_purges_only_results(checkout_factory):
     call_command("cleanup_checkout_idempotency", "--batch-size", "10")
     assert not IdempotencyRecord.objects.exists()
     assert Order.objects.filter(pk=success.json()["id"]).exists()
+
+
+@pytest.mark.parametrize("state", [State.COMPLETED, State.FAILED])
+def test_expired_terminal_result_replays_until_purged(
+    checkout_factory, checkout_state, state
+):
+    case = checkout_factory(quantities=(2,))
+    access, key = token(case.user), uuid4()
+    variant = case.variants[0]
+    if state == State.FAILED:
+        Inventory.objects.filter(variant=variant).update(quantity=1)
+
+    first = post(access, key, case.address.pk)
+    assert first.status_code == (201 if state == State.COMPLETED else 409)
+    record = IdempotencyRecord.objects.get(key=key)
+    assert record.status == state
+    if state == State.COMPLETED:
+        cart_services.add_item(user=case.user, variant_id=variant.pk, quantity=1)
+        assert Inventory.objects.get(variant=variant).quantity == 8
+    else:
+        assert error_content(first)["code"] == "OUT_OF_STOCK"
+        Inventory.objects.filter(variant=variant).update(quantity=10)
+    assert CartItem.objects.get(cart=case.cart).quantity == (
+        1 if state == State.COMPLETED else 2
+    )
+
+    # A valid cart makes accidental re-execution observable after expiry.
+    IdempotencyRecord.objects.filter(pk=record.pk).update(
+        expires_at=timezone.now() - timedelta(seconds=1)
+    )
+    saved_record = IdempotencyRecord.objects.values().get(pk=record.pk)
+    before = checkout_state()
+    replay = post(access, key, case.address.pk)
+
+    assert replay.status_code == first.status_code
+    if state == State.COMPLETED:
+        assert replay.json() == first.json()
+        assert Order.objects.count() == 1
+    else:
+        assert error_content(replay) == error_content(first)
+        assert not Order.objects.exists()
+    assert replay["X-Request-ID"] != first["X-Request-ID"]
+    assert checkout_state() == before
+    assert IdempotencyRecord.objects.count() == 1
+    assert IdempotencyRecord.objects.values().get(pk=record.pk) == saved_record
+
+
+def test_purged_key_creates_new_order_and_replays_without_second_decrement(
+    checkout_factory, checkout_state
+):
+    case = checkout_factory(quantities=(2,))
+    access, key = token(case.user), uuid4()
+    variant = case.variants[0]
+    first = post(access, key, case.address.pk)
+    assert first.status_code == 201
+    old_order_id = first.json()["id"]
+    old_record_id = IdempotencyRecord.objects.get(key=key).pk
+    history = checkout_state()
+    assert Inventory.objects.get(variant=variant).quantity == 8
+
+    cart_services.add_item(user=case.user, variant_id=variant.pk, quantity=3)
+    before_purge = checkout_state()
+    IdempotencyRecord.objects.filter(pk=old_record_id).update(
+        expires_at=timezone.now() - timedelta(seconds=1)
+    )
+    call_command("cleanup_checkout_idempotency", "--batch-size", "10")
+    assert not IdempotencyRecord.objects.exists()
+    assert checkout_state() == before_purge
+
+    second = post(access, key, case.address.pk)
+    assert second.status_code == 201
+    assert second.json()["id"] != old_order_id
+    assert Order.objects.count() == 2
+    assert Inventory.objects.get(variant=variant).quantity == 5
+    assert not CartItem.objects.filter(cart=case.cart).exists()
+    record = IdempotencyRecord.objects.get(key=key)
+    assert record.pk != old_record_id and record.status == State.COMPLETED
+    assert record.resource_id == second.json()["id"]
+    assert record.response_status_code == 201 and record.response_body == second.json()
+    assert record.expires_at > timezone.now()
+    assert IdempotencyRecord.objects.count() == 1
+
+    after = checkout_state()
+    for label in ("orders.Order", "orders.OrderItem", "orders.OrderShippingAddress"):
+        assert all(row in after[label] for row in history[label])
+    replay = post(access, key, case.address.pk)
+    assert replay.status_code == 201 and replay.json() == second.json()
+    assert replay["X-Request-ID"] != second["X-Request-ID"]
+    assert checkout_state() == after
+    assert IdempotencyRecord.objects.get(key=key).pk == record.pk
+    assert IdempotencyRecord.objects.count() == 1
 
 
 def test_database_scope_and_completed_shape(customer):
