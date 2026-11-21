@@ -56,7 +56,7 @@ class CatalogDetailLookupMixin:
 @extend_schema_view(
     get=extend_schema(
         operation_id="categories_list",
-        summary="Получить активные категории без пагинации",
+        summary="List active categories without pagination",
         responses={
             200: CategorySerializer(many=True),
             401: ERROR_RESPONSES[401],
@@ -65,8 +65,8 @@ class CatalogDetailLookupMixin:
     ),
     post=extend_schema(
         operation_id="categories_create",
-        summary="Создать категорию",
-        description="Требуется MANAGER или superuser. parent — ID категории или null.",
+        summary="Create a category",
+        description="Requires MANAGER or superuser. parent is a category ID or null.",
         request=CategorySerializer,
         responses={
             201: CategorySerializer,
@@ -87,14 +87,14 @@ class CategoryListCreateView(CatalogAccessMixin, generics.ListCreateAPIView):
 @extend_schema_view(
     get=extend_schema(
         operation_id="categories_retrieve",
-        summary="Получить активную категорию по slug",
+        summary="Get an active category by slug",
         parameters=[
             OpenApiParameter(
                 "lookup",
                 OpenApiTypes.STR,
                 OpenApiParameter.PATH,
                 required=True,
-                description="Slug категории, например running.",
+                description="Category slug, such as running.",
             ),
         ],
         responses={
@@ -106,8 +106,8 @@ class CategoryListCreateView(CatalogAccessMixin, generics.ListCreateAPIView):
     ),
     patch=extend_schema(
         operation_id="categories_update",
-        summary="Частично изменить категорию по ID",
-        description="MANAGER или superuser. Slug нельзя изменить после создания.",
+        summary="Partially update a category by ID",
+        description="Requires MANAGER or superuser. The slug is immutable after creation.",
         parameters=[
             OpenApiParameter(
                 "lookup",
@@ -115,7 +115,7 @@ class CategoryListCreateView(CatalogAccessMixin, generics.ListCreateAPIView):
                 OpenApiParameter.PATH,
                 required=True,
                 pattern="^[0-9]+$",
-                description="Числовой ID в строковом сегменте, например 12.",
+                description="Numeric category ID in the path segment, such as 12.",
             ),
         ],
         request=CategorySerializer,
@@ -148,7 +148,7 @@ class CategoryDetailView(
 @extend_schema_view(
     get=extend_schema(
         operation_id="brands_list",
-        summary="Получить активные бренды без пагинации",
+        summary="List active brands without pagination",
         responses={
             200: BrandSerializer(many=True),
             401: ERROR_RESPONSES[401],
@@ -157,8 +157,8 @@ class CategoryDetailView(
     ),
     post=extend_schema(
         operation_id="brands_create",
-        summary="Создать бренд",
-        description="Требуется MANAGER или superuser.",
+        summary="Create a brand",
+        description="Requires MANAGER or superuser.",
         request=BrandSerializer,
         responses={
             201: BrandSerializer,
@@ -179,14 +179,14 @@ class BrandListCreateView(CatalogAccessMixin, generics.ListCreateAPIView):
 @extend_schema_view(
     get=extend_schema(
         operation_id="brands_retrieve",
-        summary="Получить активный бренд по slug",
+        summary="Get an active brand by slug",
         parameters=[
             OpenApiParameter(
                 "lookup",
                 OpenApiTypes.STR,
                 OpenApiParameter.PATH,
                 required=True,
-                description="Slug бренда, например nike.",
+                description="Brand slug, such as nike.",
             ),
         ],
         responses={
@@ -198,8 +198,8 @@ class BrandListCreateView(CatalogAccessMixin, generics.ListCreateAPIView):
     ),
     patch=extend_schema(
         operation_id="brands_update",
-        summary="Частично изменить бренд по ID",
-        description="MANAGER или superuser. Slug после создания неизменяем.",
+        summary="Partially update a brand by ID",
+        description="Requires MANAGER or superuser. The slug is immutable after creation.",
         parameters=[
             OpenApiParameter(
                 "lookup",
@@ -207,7 +207,7 @@ class BrandListCreateView(CatalogAccessMixin, generics.ListCreateAPIView):
                 OpenApiParameter.PATH,
                 required=True,
                 pattern="^[0-9]+$",
-                description="Числовой ID бренда в строковом сегменте.",
+                description="Numeric brand ID in the path segment.",
             ),
         ],
         request=BrandSerializer,
@@ -240,13 +240,14 @@ class BrandDetailView(
 @extend_schema_view(
     get=extend_schema(
         operation_id="products_list",
-        summary="Каталог с фильтрами, поиском и пагинацией",
+        summary="Browse the catalog with filtering, search, and pagination",
         description=(
-            "Публичные активные товары с активными Category/Brand и вариантом. "
-            "category/brand — slug. Цена — минимальная цена активного варианта. "
-            "search ищет по name и description. ordering: name, price, -price; "
-            "по умолчанию name. min_price <= max_price. Страница — 12 товаров; "
-            "page_size и page=last не поддерживаются."
+            "Lists active products with an active category, brand, and at least one "
+            "active variant. category and brand are slugs. The listed price is the "
+            "lowest active variant price. search matches name and description. "
+            "ordering accepts name, price, or -price and defaults to name. "
+            "min_price must be at most max_price. Each page holds 12 products. "
+            "page_size and page=last are unsupported."
         ),
         parameters=[ProductQuerySerializer],
         responses={
@@ -259,10 +260,10 @@ class BrandDetailView(
     ),
     post=extend_schema(
         operation_id="products_create",
-        summary="Создать Product",
+        summary="Create a product",
         description=(
-            "MANAGER или superuser. category и brand — числовые ID. "
-            "У Product нет price: цены задаются у вариантов отдельным endpoint."
+            "Requires MANAGER or superuser. category and brand are numeric IDs. "
+            "Set prices on variants through the variant endpoint."
         ),
         request=ProductInputSerializer,
         responses={
@@ -322,14 +323,14 @@ class ProductListView(CatalogAccessMixin, generics.ListAPIView):
 @extend_schema_view(
     get=extend_schema(
         operation_id="products_retrieve",
-        summary="Получить Product detail по slug",
+        summary="Get product details by slug",
         parameters=[
             OpenApiParameter(
                 "slug",
                 OpenApiTypes.STR,
                 OpenApiParameter.PATH,
                 required=True,
-                description="Slug товара, например running-shirt.",
+                description="Product slug, such as running-shirt.",
             ),
         ],
         responses={
@@ -341,11 +342,11 @@ class ProductListView(CatalogAccessMixin, generics.ListAPIView):
     ),
     patch=extend_schema(
         operation_id="products_update",
-        summary="Частично изменить Product по ID",
+        summary="Partially update a product by ID",
         description=(
-            "MANAGER или superuser. Параметр называется slug по существующему "
-            "URLconf, но для PATCH принимает числовой ID. Slug неизменяем. "
-            "Ответ manager имеет category/brand IDs, а не public nested objects."
+            "Requires MANAGER or superuser. For PATCH, pass a numeric ID in the "
+            "slug path parameter. The product slug is immutable. The manager "
+            "response uses category and brand IDs in place of nested objects."
         ),
         parameters=[
             OpenApiParameter(
@@ -354,7 +355,7 @@ class ProductListView(CatalogAccessMixin, generics.ListAPIView):
                 OpenApiParameter.PATH,
                 required=True,
                 pattern="^[0-9]+$",
-                description="ID товара в существующем строковом сегменте пути.",
+                description="Numeric product ID in the path segment.",
             ),
         ],
         request=ProductInputSerializer,

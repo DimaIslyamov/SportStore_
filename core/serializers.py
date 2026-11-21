@@ -5,18 +5,17 @@ from rest_framework import serializers
 
 class StrictInputMixin:
     """
-    Добавляет строгую проверку входящих полей сериализатора DRF.
+    Enforce strict field validation on a DRF serializer.
 
-    По умолчанию DRF игнорирует неизвестные поля и поля с read_only=True.
-    Этот Mixin запрещает передавать такие поля и возвращает ValidationError.
+    DRF normally ignores unknown and read-only fields. This mixin rejects
+    submitted fields of either kind with ValidationError.
 
-    Используется совместно с Serializer или ModelSerializer.
-    Должен указываться перед ними в списке наследования.
+    List this mixin before Serializer or ModelSerializer in the base classes.
     """
 
     def to_internal_value(self, data):
         """
-        Проверяет входящие данные перед стандартной валидацией DRF.
+        Check incoming fields before DRF validation.
         """
         if isinstance(data, Mapping):
             writable = {

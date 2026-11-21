@@ -381,16 +381,29 @@ def test_images_only_offer_binary_file_in_multipart(openapi, operations):
 
 
 def test_all_errors_and_response_headers_follow_stage16(openapi, operations):
-    for operation in operations.values():
+    throttle_policies = {
+        "auth_register": ("auth_register", "5 requests per hour"),
+        "auth_token_create": ("auth_login", "5 requests per minute"),
+        "auth_token_refresh": ("auth_refresh", "30 requests per minute"),
+        "orders_checkout": ("checkout", "10 requests per minute"),
+        "payments_create": ("payment", "10 requests per minute"),
+    }
+    for name, operation in operations.items():
+        assert ("429" in operation["responses"]) == (name in throttle_policies)
         for status, response in operation["responses"].items():
             assert response["headers"]["X-Request-ID"]["schema"]["format"] == "uuid"
+            assert ("Retry-After" in response["headers"]) == (status == "429")
+            if status == "429":
+                assert response["headers"]["Retry-After"]["schema"]["type"] == "integer"
+                scope, rate = throttle_policies[name]
+                assert scope in operation["description"]
+                assert rate in operation["description"]
             if status == "204":
                 assert "content" not in response
             elif int(status) >= 400:
                 assert response["content"]["application/json"]["schema"][
                     "$ref"
                 ].endswith("/ApiError")
-        assert "429" not in operation["responses"]
     error = openapi["components"]["schemas"]["ApiErrorDetail"]
     assert (
         set(error["properties"])

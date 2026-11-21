@@ -24,7 +24,7 @@ from .schema import (
 @extend_schema(
     operation_id="health_retrieve",
     tags=["Health"],
-    summary="Проверить API и соединение с PostgreSQL",
+    summary="Check API and PostgreSQL connectivity",
     auth=[],
     parameters=[REQUEST_ID_RESPONSE],
     responses={
@@ -34,13 +34,13 @@ from .schema import (
     },
     examples=[
         OpenApiExample(
-            "База доступна",
+            "Database available",
             value={"status": "ok", "database": "ok"},
             response_only=True,
             status_codes=[200],
         ),
         OpenApiExample(
-            "База недоступна",
+            "Database unavailable",
             value={
                 "error": {
                     "code": "SERVICE_UNAVAILABLE",

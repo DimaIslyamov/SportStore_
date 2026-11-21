@@ -34,11 +34,11 @@ from .serializers import (
 @extend_schema_view(
     get=extend_schema(
         operation_id="cart_retrieve",
-        summary="Получить собственную корзину",
+        summary="Get your cart",
         description=(
-            "Требуется CUSTOMER. GET не создаёт Cart в БД. "
-            "Если сохранённой корзины нет, id/created_at/updated_at равны null. "
-            "Cart не резервирует Inventory; суммы рассчитывает backend."
+            "Requires CUSTOMER. GET leaves the database unchanged. "
+            "If there is no saved cart, id, created_at, and updated_at are null. "
+            "The server calculates totals. The cart does not reserve inventory."
         ),
         responses={200: CartOutputSerializer, **AUTH_ERRORS, **COMMON_ERRORS},
     ),
@@ -61,11 +61,11 @@ class CartView(APIView):
 @extend_schema_view(
     post=extend_schema(
         operation_id="cart_items_create",
-        summary="Добавить Variant или увеличить quantity существующей позиции",
+        summary="Add a variant or increase the quantity of an existing cart item",
         description=(
-            "Требуется CUSTOMER. variant — ID, quantity от 1 до 999. "
-            "201: новая строка; 200: увеличение прежней строки. "
-            "Цена не принимается от клиента. Stock повторно проверит checkout."
+            "Requires CUSTOMER. variant is an ID and quantity ranges from 1 to 999. "
+            "Returns 201 for a new item or 200 when increasing an existing quantity. "
+            "The server sets the price and checks stock again at checkout."
         ),
         request=CartItemAddInputSerializer,
         responses={
@@ -79,7 +79,7 @@ class CartView(APIView):
         },
         examples=[
             OpenApiExample(
-                "Добавить две единицы Variant",
+                "Add two units of a variant",
                 value={"variant": 100, "quantity": 2},
                 request_only=True,
             ),
@@ -110,10 +110,10 @@ class CartItemCreateView(APIView):
 @extend_schema_view(
     patch=extend_schema(
         operation_id="cart_items_update",
-        summary="Установить quantity своей позиции",
+        summary="Set the quantity of your cart item",
         description=(
-            "Требуется CUSTOMER. quantity обязателен: целое от 1 до 999. "
-            "Это абсолютное количество. Чужой CartItem скрыт за 404."
+            "Requires CUSTOMER. quantity is an absolute integer from 1 to 999. "
+            "Another user's cart item returns 404."
         ),
         request=CartItemQuantityInputSerializer,
         responses={
@@ -127,7 +127,7 @@ class CartItemCreateView(APIView):
     ),
     delete=extend_schema(
         operation_id="cart_items_delete",
-        summary="Удалить свою позицию",
+        summary="Remove your cart item",
         request=None,
         responses={
             204: None,

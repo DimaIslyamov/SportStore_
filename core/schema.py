@@ -30,9 +30,17 @@ REQUEST_ID_RESPONSE = OpenApiParameter(
     location=OpenApiParameter.HEADER,
     response=True,
     description=(
-        "UUID текущего HTTP-запроса, назначенный сервером. "
-        "В error JSON совпадает с error.request_id; при replay создаётся заново."
+        "Server-assigned UUID for this HTTP request. It matches error.request_id "
+        "in the error body. Each replay receives a new request ID."
     ),
+)
+
+RETRY_AFTER_RESPONSE = OpenApiParameter(
+    name="Retry-After",
+    type=OpenApiTypes.INT,
+    location=OpenApiParameter.HEADER,
+    response=[429],
+    description="Number of seconds to wait before retrying the request.",
 )
 
 IDEMPOTENCY_KEY_HEADER = OpenApiParameter(
@@ -41,9 +49,9 @@ IDEMPOTENCY_KEY_HEADER = OpenApiParameter(
     location=OpenApiParameter.HEADER,
     required=True,
     description=(
-        "UUID в форме 8-4-4-4-12 с дефисами. Для повтора одной операции "
-        "используй прежний ключ и тот же значимый payload. "
-        "Это не JWT и не Request ID."
+        "UUID in the hyphenated 8-4-4-4-12 format. To retry the same operation, "
+        "reuse the original key and keep the fields that affect the operation unchanged. "
+        "Supply this header independently of authentication and request tracing."
     ),
 )
 
@@ -51,54 +59,59 @@ ERROR_RESPONSES = {
     400: OpenApiResponse(
         response=ApiErrorSerializer,
         description=(
-            "Некорректный ввод: VALIDATION_ERROR с деталями полей, "
-            "parse_error либо описанный у операции бизнес-код."
+            "Invalid input may return VALIDATION_ERROR with field details, "
+            "parse_error, or an operation-specific error code."
         ),
     ),
     401: OpenApiResponse(
         response=ApiErrorSerializer,
         description=(
-            "Нет JWT, он невалиден/истёк либо отклонены credentials/token. "
-            "Коды включают not_authenticated, token_not_valid, no_active_account."
+            "The JWT is missing, invalid, or expired, or the submitted credentials "
+            "or token were rejected. Codes include not_authenticated, token_not_valid, "
+            "and no_active_account."
         ),
     ),
     403: OpenApiResponse(
         response=ApiErrorSerializer,
-        description="permission_denied / PERMISSION_DENIED: роль или доступ не разрешены.",
+        description="permission_denied / PERMISSION_DENIED: insufficient permissions.",
     ),
     404: OpenApiResponse(
         response=ApiErrorSerializer,
         description=(
-            "Ресурс отсутствует или скрыт ownership/публичным queryset. "
-            "Код not_found либо доменный код операции."
+            "The resource is missing or outside the caller's visibility. "
+            "Returns not_found or an operation-specific error code."
         ),
     ),
     409: OpenApiResponse(
         response=ApiErrorSerializer,
-        description="Конфликт состояния или повторного ключа; см. коды операции.",
+        description="State or key reuse conflict. See the operation for specific codes.",
     ),
     415: OpenApiResponse(
         response=ApiErrorSerializer,
-        description="unsupported_media_type: неподдерживаемый Content-Type.",
+        description="unsupported_media_type: the Content-Type is unsupported.",
+    ),
+    429: OpenApiResponse(
+        response=ApiErrorSerializer,
+        description="throttled: request limit exceeded. Retry after the indicated delay.",
     ),
     503: OpenApiResponse(
         response=ApiErrorSerializer,
-        description="Временная недоступность; конкретная причина указана у операции.",
+        description="Temporary unavailability. See the operation for specific causes.",
     ),
 }
 
 COMMON_ERRORS = {
     405: OpenApiResponse(
         response=ApiErrorSerializer,
-        description="method_not_allowed; разрешённые методы в заголовке Allow.",
+        description="method_not_allowed. The Allow header lists supported methods.",
     ),
     406: OpenApiResponse(
         response=ApiErrorSerializer,
-        description="not_acceptable: API не может вернуть запрошенный media type.",
+        description="not_acceptable: the requested response media type is unavailable.",
     ),
     500: OpenApiResponse(
         response=ApiErrorSerializer,
-        description="INTERNAL_ERROR: безопасная ошибка без traceback и секретов.",
+        description="INTERNAL_ERROR: a generic server error with safe response details.",
     ),
 }
 

@@ -2,6 +2,7 @@ from rest_framework import generics
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -16,6 +17,7 @@ from core.schema import (
     ERROR_RESPONSES,
     IDEMPOTENCY_KEY_HEADER,
     REQUEST_ID_RESPONSE,
+    RETRY_AFTER_RESPONSE,
 )
 
 from . import services
@@ -35,21 +37,24 @@ from .serializers import (
 @extend_schema_view(
     post=extend_schema(
         operation_id="orders_checkout",
-        summary="Оформить корзину с защитой от повторного запроса",
+        summary="Check out the cart idempotently",
         description=(
-            "CUSTOMER. Обязательны Idempotency-Key UUID и address_id своего Address. "
-            "Backend атомарно проверяет stock, создаёт snapshots Order/Items/address, "
-            "списывает Inventory и очищает Cart. Цена и totals берутся сервером. "
-            "Повтор key/payload возвращает сохранённый 201 и исходный JSON, "
-            "а не свежий статус заказа. Новый Request ID назначается всегда. "
-            "400: EMPTY_CART/INVALID_QUANTITY или validation. "
+            "Requires CUSTOMER, a UUID Idempotency-Key, and the ID of an address "
+            "you own. Checkout atomically checks stock, creates the order and "
+            "item and address snapshots, decrements inventory, and clears the cart. "
+            "The server calculates prices and totals. Reusing the key and payload "
+            "returns the stored 201 and original JSON with a new request ID. "
+            "400: EMPTY_CART, INVALID_QUANTITY, or invalid input. "
             "404: ADDRESS_NOT_FOUND. 409: OUT_OF_STOCK, PRODUCT_UNAVAILABLE, "
             "CHECKOUT_DATA_INVALID, AMOUNT_OUT_OF_RANGE, IDEMPOTENCY_KEY_REUSED, "
-            "IDEMPOTENCY_IN_PROGRESS. 503: IDEMPOTENCY_RESERVATION_BUSY или "
-            "IDEMPOTENCY_ATTEMPT_ABORTED. FAILED replay сохраняет отказ; "
-            "для новой бизнес-попытки нужен новый key."
+            "IDEMPOTENCY_IN_PROGRESS. 503: IDEMPOTENCY_RESERVATION_BUSY or "
+            "IDEMPOTENCY_ATTEMPT_ABORTED. Replaying a FAILED checkout returns the "
+            "stored error. Use a new key for a new checkout attempt."
+            " Throttle scope checkout: 10 requests per minute per authenticated customer. "
+            "A replay can receive 429 before the stored result is returned. "
+            "Wait for Retry-After, then resend the original key and payload."
         ),
-        parameters=[IDEMPOTENCY_KEY_HEADER],
+        parameters=[IDEMPOTENCY_KEY_HEADER, RETRY_AFTER_RESPONSE],
         request=CheckoutInputSerializer,
         responses={
             201: CheckoutOrderOutputSerializer,
@@ -59,16 +64,17 @@ from .serializers import (
             415: ERROR_RESPONSES[415],
             503: ERROR_RESPONSES[503],
             **AUTH_ERRORS,
+            429: ERROR_RESPONSES[429],
             **COMMON_ERRORS,
         },
         examples=[
             OpenApiExample(
-                "Оформление на свой Address",
+                "Checkout using your own address",
                 value={"address_id": 7},
                 request_only=True,
             ),
             OpenApiExample(
-                "Недостаточный остаток",
+                "Insufficient stock",
                 value={
                     "error": {
                         "code": "OUT_OF_STOCK",
@@ -81,7 +87,7 @@ from .serializers import (
                 status_codes=[409],
             ),
             OpenApiExample(
-                "Неправильный UUID header",
+                "Invalid idempotency key UUID",
                 value={
                     "error": {
                         "code": "VALIDATION_ERROR",
@@ -99,6 +105,8 @@ from .serializers import (
     ),
 )
 class CheckoutView(generics.GenericAPIView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "checkout"
     permission_classes = [IsAuthenticated, IsCustomer]
     parser_classes = [JSONParser]
     serializer_class = CheckoutInputSerializer
@@ -136,10 +144,10 @@ class OrderReadMixin:
 @extend_schema_view(
     get=extend_schema(
         operation_id="orders_list",
-        summary="Получить доступные заказы без пагинации",
+        summary="List accessible orders without pagination",
         description=(
-            "CUSTOMER видит свои заказы; MANAGER и superuser — все. "
-            "Ответ — массив OrderSummary, без items/shipping_address."
+            "CUSTOMER can see their own orders. MANAGER and superuser can see all orders. "
+            "Returns an array of OrderSummary objects without items or shipping_address."
         ),
         responses={
             200: OrderSummarySerializer(many=True),
@@ -157,11 +165,11 @@ class OrderListView(OrderReadMixin, generics.ListAPIView):
 @extend_schema_view(
     get=extend_schema(
         operation_id="orders_retrieve",
-        summary="Получить текущий заказ со snapshots",
+        summary="Get an order with its saved snapshots",
         description=(
-            "CUSTOMER — только собственный Order; MANAGER/superuser — любой. "
-            "404 ORDER_NOT_FOUND также скрывает чужой заказ от Customer. "
-            "shipping_address и items — сохранённые исторические данные."
+            "CUSTOMER can read their own orders. MANAGER and superuser can read any order. "
+            "Another customer's order returns 404 ORDER_NOT_FOUND. "
+            "shipping_address and items contain historical snapshots."
         ),
         responses={
             200: CheckoutOrderOutputSerializer,
@@ -185,13 +193,14 @@ class OrderDetailView(OrderReadMixin, generics.RetrieveAPIView):
 @extend_schema_view(
     post=extend_schema(
         operation_id="orders_cancel",
-        summary="Отменить собственный PENDING/PAID заказ",
+        summary="Cancel your own PENDING or PAID order",
         description=(
-            "CUSTOMER owner. Пустой JSON {} или пустое тело; поля не принимаются. "
-            "Возвращает OrderSummary. Stock восстанавливается один раз. "
-            "Повтор для CANCELLED даёт 200 без повторного восстановления. "
-            "409: ORDER_CANNOT_BE_CANCELLED либо INVENTORY_RESTORE_UNAVAILABLE. "
-            "PROCESSING → CANCELLED запрещён. Отмена fake-оплаты не является refund."
+            "Requires the CUSTOMER who owns the order. Send an empty JSON object "
+            "or an empty body. Returns OrderSummary. Stock is restored once. "
+            "Repeating cancellation for a CANCELLED order returns 200 without "
+            "restoring stock again. 409: ORDER_CANNOT_BE_CANCELLED or "
+            "INVENTORY_RESTORE_UNAVAILABLE. A PROCESSING order cannot be cancelled. "
+            "Order cancellation does not refund a simulated payment."
         ),
         request={
             "application/json": {
@@ -228,15 +237,15 @@ class OrderCancelView(generics.GenericAPIView):
 @extend_schema_view(
     patch=extend_schema(
         operation_id="orders_status_update",
-        summary="Выполнить разрешённый переход статуса",
+        summary="Apply an allowed order status transition",
         description=(
-            "MANAGER или superuser. Поле status обязательно. "
-            "Граф: PENDING → PAID/CANCELLED; PAID → PROCESSING/CANCELLED; "
+            "Requires MANAGER or superuser and the status field. "
+            "Transitions: PENDING → PAID/CANCELLED, PAID → PROCESSING/CANCELLED, "
             "PROCESSING → SHIPPED; SHIPPED → DELIVERED. "
-            "DELIVERED/CANCELLED terminal. Для PAID обязателен matching SUCCESS "
-            "Payment: вручную подтверждать оплату нельзя. "
+            "DELIVERED and CANCELLED are terminal. Transitioning to PAID requires "
+            "a matching SUCCESS payment record. "
             "409: INVALID_ORDER_STATUS_TRANSITION, PAYMENT_CONFIRMATION_REQUIRED, "
-            "INVENTORY_RESTORE_UNAVAILABLE. Ответ — OrderSummary."
+            "INVENTORY_RESTORE_UNAVAILABLE. Returns OrderSummary."
         ),
         request=OrderStatusInputSerializer,
         responses={
@@ -250,12 +259,12 @@ class OrderCancelView(generics.GenericAPIView):
         },
         examples=[
             OpenApiExample(
-                "Отправить оплаченный заказ в обработку",
+                "Move a paid order to processing",
                 value={"status": "PROCESSING"},
                 request_only=True,
             ),
             OpenApiExample(
-                "Нет подтверждённой оплаты",
+                "No confirmed payment",
                 value={
                     "error": {
                         "code": "PAYMENT_CONFIRMATION_REQUIRED",

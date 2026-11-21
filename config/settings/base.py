@@ -2,6 +2,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -13,8 +14,27 @@ CATALOG_S3_BUCKET = env("CATALOG_S3_BUCKET", default="")
 CATALOG_S3_REGION = env("CATALOG_S3_REGION", default="")
 
 SECRET_KEY = env("DJANGO_SECRET_KEY")
+JWT_SIGNING_KEY = env("JWT_SIGNING_KEY")
+for name, value, minimum in (
+    ("DJANGO_SECRET_KEY", SECRET_KEY, 50),
+    ("JWT_SIGNING_KEY", JWT_SIGNING_KEY, 32),
+):
+    if (
+        len(value.strip()) < minimum
+        or len(set(value.strip())) < 5
+        or value.lstrip().lower().startswith(("replace-with-", "django-insecure-"))
+    ):
+        raise ImproperlyConfigured(f"Set {name} to a random, non-placeholder value.")
+if SECRET_KEY == JWT_SIGNING_KEY:
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY and JWT_SIGNING_KEY must differ.")
+
 DEBUG = False
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
+SESSION_COOKIE_SECURE = env.bool("DJANGO_SESSION_COOKIE_SECURE", default=False)
+CSRF_COOKIE_SECURE = env.bool("DJANGO_CSRF_COOKIE_SECURE", default=False)
+SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=False)
+SECURE_HSTS_SECONDS = env.int("DJANGO_SECURE_HSTS_SECONDS", default=0)
+DATA_UPLOAD_MAX_NUMBER_FILES = 1
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -114,6 +134,14 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "NUM_PROXIES": 0,
+    "DEFAULT_THROTTLE_RATES": {
+        "auth_login": "5/min",
+        "auth_register": "5/hour",
+        "auth_refresh": "30/min",
+        "checkout": "10/min",
+        "payment": "10/min",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -123,11 +151,11 @@ SPECTACULAR_SETTINGS = {
     ],
     "TITLE": "SportStore API",
     "DESCRIPTION": (
-        "Diploma MVP интернет-магазина спортивных товаров. "
-        "Денежные суммы возвращаются десятичными строками, валюта PLN. "
-        "Ошибки: error.code/message/details/request_id. "
-        "Каждый ответ содержит X-Request-ID. "
-        "JWT подтверждает пользователя; роли и ownership проверяет API."
+        "Diploma MVP for a sporting goods store. "
+        "Monetary amounts are decimal strings in PLN. Error responses contain "
+        "error.code, error.message, error.details, and error.request_id. "
+        "Each response includes X-Request-ID. JWT authenticates the user, "
+        "and the API checks roles and resource ownership."
     ),
     "VERSION": "1.0.0",
     "OAS_VERSION": "3.0.3",
@@ -141,15 +169,15 @@ SPECTACULAR_SETTINGS = {
         "PaymentStatusEnum": "payments.models.Payment.Status",
     },
     "TAGS": [
-        {"name": "Health", "description": "Доступность API и PostgreSQL"},
-        {"name": "Authentication", "description": "Регистрация и JWT"},
-        {"name": "Users", "description": "Собственный профиль"},
-        {"name": "Addresses", "description": "Адреса Customer"},
-        {"name": "Catalog", "description": "Чтение каталога и справочники"},
-        {"name": "Manager Catalog", "description": "Управление каталогом"},
-        {"name": "Cart", "description": "Корзина Customer"},
-        {"name": "Orders", "description": "Checkout и lifecycle заказов"},
-        {"name": "Payments", "description": "Синхронные fake-попытки оплаты"},
+        {"name": "Health", "description": "API and PostgreSQL availability"},
+        {"name": "Authentication", "description": "Registration and JWT"},
+        {"name": "Users", "description": "Your user profile"},
+        {"name": "Addresses", "description": "Customer addresses"},
+        {"name": "Catalog", "description": "Catalog browsing and reference data"},
+        {"name": "Manager Catalog", "description": "Catalog management"},
+        {"name": "Cart", "description": "Customer cart"},
+        {"name": "Orders", "description": "Checkout and order lifecycle"},
+        {"name": "Payments", "description": "Synchronous simulated payment attempts"},
     ],
 }
 
@@ -160,7 +188,7 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": False,
     "ALGORITHM": "HS256",
-    "SIGNING_KEY": env("JWT_SIGNING_KEY"),
+    "SIGNING_KEY": JWT_SIGNING_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",

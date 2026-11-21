@@ -53,8 +53,8 @@ class ManagerView(APIView):
 @extend_schema_view(
     post=extend_schema(
         operation_id="variants_create",
-        summary="Создать вариант и Inventory с нулевым остатком",
-        description="MANAGER или superuser. Product определяется product_id в URL.",
+        summary="Create a variant with zero inventory",
+        description="Requires MANAGER or superuser. product_id identifies the product.",
         request=VariantInputSerializer,
         responses={
             201: VariantOutputSerializer,
@@ -83,10 +83,10 @@ class VariantCreateView(ManagerView):
 @extend_schema_view(
     patch=extend_schema(
         operation_id="variants_update",
-        summary="Частично изменить вариант товара",
+        summary="Partially update a product variant",
         description=(
-            "MANAGER или superuser. SKU неизменяем; price принадлежит Variant. "
-            "Variant должен относиться к product_id."
+            "Requires MANAGER or superuser. The SKU is immutable. The variant owns "
+            "its price and must belong to the product identified by product_id."
         ),
         request=VariantInputSerializer,
         responses={
@@ -120,8 +120,8 @@ class VariantUpdateView(ManagerView):
 @extend_schema_view(
     get=extend_schema(
         operation_id="inventory_retrieve",
-        summary="Получить остаток варианта",
-        description="MANAGER или superuser. Variant должен принадлежать Product.",
+        summary="Get variant inventory",
+        description="Requires MANAGER or superuser. The variant must belong to the product.",
         responses={
             200: InventoryOutputSerializer,
             404: ERROR_RESPONSES[404],
@@ -131,10 +131,10 @@ class VariantUpdateView(ManagerView):
     ),
     patch=extend_schema(
         operation_id="inventory_update",
-        summary="Установить абсолютный остаток варианта",
+        summary="Set the variant's inventory quantity",
         description=(
-            "MANAGER или superuser. quantity обязателен, диапазон 0..2147483647. "
-            "Это новое абсолютное значение, не прибавление к прежнему остатку."
+            "Requires MANAGER or superuser. quantity is required and replaces the "
+            "current quantity. Its range is 0 to 2147483647."
         ),
         request=InventoryInputSerializer,
         responses={
@@ -171,12 +171,12 @@ class InventoryView(ManagerView):
 @extend_schema_view(
     post=extend_schema(
         operation_id="images_create",
-        summary="Загрузить изображение Product",
+        summary="Upload a product image",
         description=(
-            "MANAGER или superuser. Для загрузки файла используй multipart/form-data. "
-            "Поле называется file. JPEG/PNG/WebP до 5 MiB, сторона до 6000 px, "
-            "до 20000000 пикселей, без анимации. "
-            "Ошибка хранилища: 503 image_storage_unavailable."
+            "Requires MANAGER or superuser. Submit the file field as multipart/form-data. "
+            "Accepts one static JPEG, PNG, or WebP up to 5 MiB, with up to 6000 pixels "
+            "per side and up to 20 million pixels total. "
+            "A storage failure returns 503 image_storage_unavailable."
         ),
         request={"multipart/form-data": ImageInputSerializer},
         responses={
@@ -209,12 +209,11 @@ class ImageCreateView(ManagerView):
 @extend_schema_view(
     patch=extend_schema(
         operation_id="images_update",
-        summary="Изменить метаданные или заменить изображение",
+        summary="Update metadata or replace an image",
         description=(
-            "MANAGER или superuser. PATCH частичный: file можно не присылать. "
-            "Метаданные можно отправить JSON, замену файла — multipart/form-data. "
-            "Form-urlencoded также поддержан существующим parser. "
-            "Ограничения файла такие же, как при создании."
+            "Requires MANAGER or superuser. PATCH accepts partial updates and file "
+            "is optional. Submit metadata as JSON or form-urlencoded data and use "
+            "multipart/form-data to replace the file. Upload limits match those for creation."
         ),
         request={
             "multipart/form-data": ImageInputSerializer,
@@ -233,7 +232,7 @@ class ImageCreateView(ManagerView):
     ),
     delete=extend_schema(
         operation_id="images_delete",
-        summary="Удалить изображение",
+        summary="Delete an image",
         request=None,
         responses={
             204: None,

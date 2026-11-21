@@ -249,7 +249,7 @@ class ProductImage(models.Model):
     )
     image_url = models.URLField(max_length=2048)
 
-    # нужен для удаления только собственных S3-объектов
+    # Identifies S3 objects that the application owns and may delete.
     storage_key = models.CharField(
         max_length=255, blank=True, default="", editable=False
     )

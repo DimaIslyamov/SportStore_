@@ -29,6 +29,7 @@ def test_registration_creates_customer_and_hides_secrets(
     assert user.role == User.Role.CUSTOMER
     assert user.is_staff is False
     assert user.is_superuser is False
+    assert user.password != raw_password
     assert user.check_password(raw_password)
     assert "password" not in body
     assert "password_confirm" not in body
@@ -118,6 +119,54 @@ def test_registration_rejects_weak_password(
 
     assert response.status_code == 400
     assert "password" in response.json()["error"]["details"]
+    assert (
+        not get_user_model()
+        .objects.filter(email=registration_payload["email"])
+        .exists()
+    )
+
+
+def test_registration_checks_password_similarity_against_candidate(
+    api_client, registration_payload
+):
+    password = "OrchardSunrise91"
+    registration_payload.update(
+        first_name=password, password=password, password_confirm=password
+    )
+    response = api_client.post(
+        reverse("accounts:register"), registration_payload, format="json"
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert "password" in response.json()["error"]["details"]
+    assert (
+        not get_user_model()
+        .objects.filter(email=registration_payload["email"])
+        .exists()
+    )
+
+
+@pytest.mark.parametrize(("length", "status"), [(128, 201), (129, 400)])
+def test_registration_password_length_boundary(
+    api_client, registration_payload, length, status
+):
+    password = ("Z9!r6m#Q2p8aKt7xNs4v" * 7)[:length]
+    registration_payload.update(password=password, password_confirm=password)
+    response = api_client.post(
+        reverse("accounts:register"), registration_payload, format="json"
+    )
+
+    assert response.status_code == status
+    users = get_user_model().objects.filter(email=registration_payload["email"])
+    if status == 201:
+        user = users.get()
+        assert user.password != password
+        assert user.check_password(password)
+    else:
+        assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+        assert "password" in response.json()["error"]["details"]
+        assert not users.exists()
 
 
 def test_registration_rejects_invalid_email(api_client, registration_payload):

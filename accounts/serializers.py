@@ -118,7 +118,7 @@ class RegisterSerializer(StrictInputMixin, serializers.ModelSerializer):
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
-    JWT-сериализатор для авторизации пользователя по email и паролю.
+    JWT serializer for authenticating a user by email and password.
     """
 
     def __init__(self, *args, **kwargs):

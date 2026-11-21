@@ -1,7 +1,19 @@
+from uuid import uuid4
+
 import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
+
+
+@pytest.fixture(autouse=True)
+def isolate_throttle_cache(settings):
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": f"sportstore-test-{uuid4().hex}",
+        }
+    }
 
 
 @pytest.fixture

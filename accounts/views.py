@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import generics, status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -16,6 +17,7 @@ from core.schema import (
     COMMON_ERRORS,
     ERROR_RESPONSES,
     REQUEST_ID_RESPONSE,
+    RETRY_AFTER_RESPONSE,
     TokenPairOutputSerializer,
 )
 
@@ -35,21 +37,24 @@ from .serializers import (
 @extend_schema_view(
     post=extend_schema(
         operation_id="auth_register",
-        summary="Зарегистрировать Customer",
+        summary="Register a customer",
         description=(
-            "Создаётся CUSTOMER. role, is_staff и другие read-only/неизвестные "
-            "поля запрещены StrictInputMixin. Пароли в ответ не возвращаются."
+            "Creates a CUSTOMER. StrictInputMixin rejects role, is_staff, and other "
+            "read-only or unknown fields. The response omits passwords."
+            " Throttle scope auth_register: 5 requests per hour per IP address."
         ),
+        parameters=[RETRY_AFTER_RESPONSE],
         request=RegisterSerializer,
         responses={
             201: UserProfileSerializer,
             400: ERROR_RESPONSES[400],
             415: ERROR_RESPONSES[415],
+            429: ERROR_RESPONSES[429],
             **COMMON_ERRORS,
         },
         examples=[
             OpenApiExample(
-                "Запрещённое поле role",
+                "Protected role field",
                 value={
                     "error": {
                         "code": "VALIDATION_ERROR",
@@ -65,6 +70,8 @@ from .serializers import (
     ),
 )
 class RegisterView(generics.GenericAPIView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth_register"
     serializer_class = RegisterSerializer
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -84,18 +91,23 @@ class RegisterView(generics.GenericAPIView):
 @extend_schema_view(
     post=extend_schema(
         operation_id="auth_token_create",
-        summary="Получить access и refresh по email/password",
+        summary="Obtain access and refresh tokens using email and password",
+        description="Throttle scope auth_login: 5 requests per minute per IP address.",
+        parameters=[RETRY_AFTER_RESPONSE],
         request=EmailTokenObtainPairSerializer,
         responses={
             200: TokenPairOutputSerializer,
             400: ERROR_RESPONSES[400],
             401: ERROR_RESPONSES[401],
             415: ERROR_RESPONSES[415],
+            429: ERROR_RESPONSES[429],
             **COMMON_ERRORS,
         },
     ),
 )
 class EmailTokenObtainPairView(TokenObtainPairView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth_login"
     serializer_class = EmailTokenObtainPairSerializer
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -105,22 +117,27 @@ class EmailTokenObtainPairView(TokenObtainPairView):
 @extend_schema_view(
     post=extend_schema(
         operation_id="auth_token_refresh",
-        summary="Обновить JWT и получить новую refresh-пару",
+        summary="Rotate the refresh token and issue a new token pair",
         description=(
-            "ROTATE_REFRESH_TOKENS=True: ответ содержит access и refresh. "
-            "Старый refresh попадает в blacklist; сохрани новый refresh."
+            "With ROTATE_REFRESH_TOKENS=True, the response includes access and refresh. "
+            "The old refresh token is blacklisted. Store the new refresh token."
+            " Throttle scope auth_refresh: 30 requests per minute per IP address."
         ),
+        parameters=[RETRY_AFTER_RESPONSE],
         request=AccountTokenRefreshSerializer,
         responses={
             200: TokenPairOutputSerializer,
             400: ERROR_RESPONSES[400],
             401: ERROR_RESPONSES[401],
             415: ERROR_RESPONSES[415],
+            429: ERROR_RESPONSES[429],
             **COMMON_ERRORS,
         },
     ),
 )
 class AccountTokenRefreshView(TokenRefreshView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth_refresh"
     serializer_class = AccountTokenRefreshSerializer
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -130,10 +147,10 @@ class AccountTokenRefreshView(TokenRefreshView):
 @extend_schema_view(
     post=extend_schema(
         operation_id="auth_logout",
-        summary="Заблокировать собственный refresh token",
+        summary="Blacklist your own refresh token",
         description=(
-            "Нужны access JWT и refresh этого пользователя в JSON. "
-            "204 не содержит JSON-тела. Чужой refresh даёт 403."
+            "Requires a Bearer access token and the same user's refresh token in JSON. "
+            "A 204 response has an empty body. Another user's refresh token returns 403."
         ),
         request=LogoutSerializer,
         responses={
@@ -160,15 +177,15 @@ class LogoutView(generics.GenericAPIView):
 @extend_schema_view(
     get=extend_schema(
         operation_id="users_me_retrieve",
-        summary="Получить собственный профиль",
+        summary="Get your profile",
         responses={200: UserProfileSerializer, **AUTH_ERRORS, **COMMON_ERRORS},
     ),
     patch=extend_schema(
         operation_id="users_me_update",
-        summary="Частично изменить собственный профиль",
+        summary="Partially update your profile",
         description=(
-            "Можно передавать first_name, last_name, phone. "
-            "email, role и прочие read-only/неизвестные поля запрещены."
+            "Accepts first_name, last_name, and phone. "
+            "Rejects email, role, and other read-only or unknown fields."
         ),
         request=UserProfileSerializer,
         responses={
@@ -193,14 +210,15 @@ class MeView(generics.RetrieveUpdateAPIView):
     tags=["Addresses"],
     parameters=[REQUEST_ID_RESPONSE],
     description=(
-        "Требуется CUSTOMER. Доступны только собственные адреса; чужой ID даёт 404. "
-        "user определяется сервером. is_default переключается атомарно."
+        "Requires CUSTOMER. Only your own addresses are accessible. "
+        "Another user's address ID returns 404. The server sets user and updates "
+        "is_default atomically."
     ),
 )
 @extend_schema_view(
     list=extend_schema(
         operation_id="addresses_list",
-        summary="Получить свои адреса без пагинации",
+        summary="List your addresses without pagination",
         responses={200: AddressSerializer(many=True), **AUTH_ERRORS, **COMMON_ERRORS},
     ),
     create=extend_schema(

@@ -2,6 +2,7 @@ from rest_framework import generics, status
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -16,6 +17,7 @@ from core.schema import (
     ERROR_RESPONSES,
     IDEMPOTENCY_KEY_HEADER,
     REQUEST_ID_RESPONSE,
+    RETRY_AFTER_RESPONSE,
 )
 from orders.idempotency import parse_idempotency_key
 
@@ -27,21 +29,23 @@ from .services import create_payment
 @extend_schema_view(
     post=extend_schema(
         operation_id="payments_create",
-        summary="Создать или повторно получить fake-попытку оплаты",
+        summary="Create or replay a simulated payment attempt",
         description=(
-            "CUSTOMER owner. Обязателен Idempotency-Key UUID. "
-            "outcome: success/failed, default success; можно отправить {}. "
-            "amount/currency/provider задаются сервером из Order и не принимаются. "
-            "Новая попытка: 201 с SUCCESS либо FAILED. Replay key/outcome: 200 "
-            "с прежним Payment, даже если текущий статус Order уже изменился. "
-            "Новый key после SUCCESS: 409 ALREADY_PAID. "
-            "Новый key для CANCELLED: 409 ORDER_NOT_PAYABLE. "
-            "Изменённый outcome при прежнем key: 409 IDEMPOTENCY_KEY_REUSED. "
-            "404 ORDER_NOT_FOUND скрывает чужой заказ. Это синхронный fake, "
-            "без настоящих денег, webhook и refund. REFUNDED из enum сейчас "
-            "не является реализованной операцией."
+            "Requires the CUSTOMER who owns the order and a UUID Idempotency-Key. "
+            "outcome accepts success or failed and defaults to success for {}. "
+            "The server sets amount and currency from the order and selects the provider. "
+            "A new attempt returns 201 with SUCCESS or FAILED. Reusing the key and "
+            "outcome returns 200 with the original payment even after the order status changes. "
+            "A new key after SUCCESS returns 409 ALREADY_PAID. A new key for a "
+            "CANCELLED order returns 409 ORDER_NOT_PAYABLE. Changing outcome for the "
+            "same key returns 409 IDEMPOTENCY_KEY_REUSED. Another customer's order "
+            "returns 404 ORDER_NOT_FOUND. The provider simulates payments synchronously "
+            "without real money, webhooks, or refunds."
+            " Throttle scope payment: 10 requests per minute per authenticated customer. "
+            "A replay can receive 429 before the stored payment is returned. "
+            "Wait for Retry-After, then resend the original key and payload."
         ),
-        parameters=[IDEMPOTENCY_KEY_HEADER],
+        parameters=[IDEMPOTENCY_KEY_HEADER, RETRY_AFTER_RESPONSE],
         request=PaymentInputSerializer,
         responses={
             200: PaymentOutputSerializer,
@@ -51,16 +55,17 @@ from .services import create_payment
             409: ERROR_RESPONSES[409],
             415: ERROR_RESPONSES[415],
             **AUTH_ERRORS,
+            429: ERROR_RESPONSES[429],
             **COMMON_ERRORS,
         },
         examples=[
             OpenApiExample(
-                "Симуляция отказа",
+                "Simulate a declined payment",
                 value={"outcome": "failed"},
                 request_only=True,
             ),
             OpenApiExample(
-                "Созданная неуспешная попытка",
+                "Recorded failed payment attempt",
                 value={
                     "id": 21,
                     "order": 42,
@@ -79,6 +84,8 @@ from .services import create_payment
     ),
 )
 class OrderPaymentView(generics.GenericAPIView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "payment"
     permission_classes = [IsAuthenticated, IsCustomer]
     parser_classes = [JSONParser]
     serializer_class = PaymentInputSerializer

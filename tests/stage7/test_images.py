@@ -7,6 +7,7 @@ from catalog import services
 from catalog.image_validation import MAX_IMAGE_BYTES, prepare_image
 from catalog.models import Product, ProductImage
 from catalog.storage import OBJECT_PREFIX
+from tests.error_contract import error_content
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -186,6 +187,41 @@ def test_wrong_image_parent_and_missing_product_do_not_upload(
     )
     assert fake_storage.events == []
     assert ProductImage.objects.filter(pk=stage7_image.pk).exists()
+
+
+@pytest.mark.parametrize(
+    ("method", "url_name", "same_field"),
+    [("post", "images", True), ("patch", "image", True), ("patch", "image", False)],
+)
+def test_multipart_file_limit_prevents_image_and_storage_writes(
+    manager_api,
+    endpoint_urls,
+    file_factory,
+    fake_storage,
+    stage7_image,
+    settings,
+    method,
+    url_name,
+    same_field,
+):
+    settings.DEBUG = False
+    first, second = file_factory(), file_factory()
+    data = {"file": [first, second]} if same_field else {"file": first, "other": second}
+    before = list(ProductImage.objects.order_by("pk").values())
+
+    response = getattr(manager_api, method)(
+        getattr(endpoint_urls, url_name), data, format="multipart"
+    )
+
+    assert response.status_code == 400
+    assert response["Content-Type"] == "application/json"
+    assert error_content(response) == {
+        "code": "BAD_REQUEST",
+        "message": "Bad request.",
+        "details": {},
+    }
+    assert list(ProductImage.objects.order_by("pk").values()) == before
+    assert fake_storage.events == []
 
 
 def test_upload_failure_does_not_create_or_replace(
